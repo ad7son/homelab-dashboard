@@ -1,0 +1,61 @@
+import { Header } from '../components/layout/Header';
+import { CpuCard } from '../components/metrics/CpuCard';
+import { MemoryCard } from '../components/metrics/MemoryCard';
+import { NetworkCard } from '../components/metrics/NetworkCard';
+import { StorageCard } from '../components/metrics/StorageCard';
+import { CpuDetails } from '../components/sections/CpuDetails';
+import { StorageList } from '../components/sections/StorageList';
+import { SystemInfoSection } from '../components/sections/SystemInfo';
+import { useSystemOverview } from '../hooks/useSystemOverview';
+
+export function Dashboard() {
+  const { data, loading, error, lastUpdated, status, refresh } =
+    useSystemOverview();
+
+  if (loading && !data) {
+    return (
+      <div className="dashboard">
+        <div className="loading-state">Loading system overview…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dashboard">
+      <Header
+        system={data?.system ?? null}
+        status={status}
+        lastUpdated={lastUpdated}
+        onRefresh={refresh}
+      />
+
+      {error && (
+        <div className={`connection-banner connection-${status}`}>
+          Connection {status}: {error}
+        </div>
+      )}
+
+      {data ? (
+        <>
+          <section className="metrics-grid">
+            <CpuCard cpu={data.cpu} />
+            <MemoryCard memory={data.memory} />
+            <StorageCard disks={data.disks} />
+            <NetworkCard network={data.network} />
+          </section>
+
+          <section className="details-grid">
+            <SystemInfoSection system={data.system} />
+            <CpuDetails cpu={data.cpu} />
+          </section>
+
+          <StorageList disks={data.disks} />
+        </>
+      ) : (
+        <div className="empty-state">
+          Unable to load system data. Waiting for connection…
+        </div>
+      )}
+    </div>
+  );
+}
