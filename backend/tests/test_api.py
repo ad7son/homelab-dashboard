@@ -1,6 +1,5 @@
-import os
 import platform
-from unittest.mock import patch
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,23 +45,34 @@ def test_system_kernel_is_platform_release(api_client: TestClient) -> None:
     assert data["architecture"] == platform.machine()
 
 
-def test_system_reads_os_release_when_present(api_client: TestClient) -> None:
-    """When /etc/os-release exists, operating_system and os_version come from it."""
-    fake_content = 'NAME="Ubuntu"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nID=ubuntu\n'
-    with patch("builtins.open", create=True) as mock_open, \
-         patch.object(os.path, "isfile", side_effect=lambda p: p == "/etc/os-release"):
-        mock_open.return_value.__enter__ = lambda s: __import__("io").StringIO(fake_content)
-        mock_open.return_value.__exit__ = lambda s, *a: None
-        response = api_client.get("/api/system")
+def test_system_reads_os_release_when_present(
+    api_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When os-release exists, operating_system and os_version come from it."""
+    fake_os_release = tmp_path / "os-release"
+    fake_os_release.write_text(
+        'NAME="Ubuntu"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nID=ubuntu\n'
+    )
+    monkeypatch.setattr(system_service, "_OS_RELEASE_PATH", str(fake_os_release))
+
+    response = api_client.get("/api/system")
     data = response.json()
     assert data["operating_system"] == "Ubuntu"
     assert data["os_version"] == "22.04.3 LTS (Jammy Jellyfish)"
 
 
-def test_system_fallback_without_os_release(api_client: TestClient) -> None:
-    """Without /etc/os-release, fall back to platform.system()."""
-    with patch.object(os.path, "isfile", return_value=False):
-        response = api_client.get("/api/system")
+def test_system_fallback_without_os_release(
+    api_client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without os-release, fall back to platform.system()."""
+    missing_path = tmp_path / "no-such-os-release"
+    monkeypatch.setattr(system_service, "_OS_RELEASE_PATH", str(missing_path))
+
+    response = api_client.get("/api/system")
     data = response.json()
     assert data["operating_system"] == platform.system()
 
