@@ -13,6 +13,12 @@ interface UseSystemOverviewResult {
   refresh: () => void;
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 export function useSystemOverview(): UseSystemOverviewResult {
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,9 +27,15 @@ export function useSystemOverview(): UseSystemOverviewResult {
   const [status, setStatus] = useState<ConnectionStatus>('offline');
   const failureCountRef = useRef(0);
   const mountedRef = useRef(true);
-  const pollingRef = useRef(true);
+  const inFlightRef = useRef(false);
 
   const fetchOverview = useCallback(async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+
+    inFlightRef.current = true;
+
     try {
       const overview = await getSystemOverview();
       if (!mountedRef.current) return;
@@ -47,6 +59,7 @@ export function useSystemOverview(): UseSystemOverviewResult {
         setStatus('unstable');
       }
     } finally {
+      inFlightRef.current = false;
       if (mountedRef.current) {
         setLoading(false);
       }
@@ -58,22 +71,22 @@ export function useSystemOverview(): UseSystemOverviewResult {
   }, [fetchOverview]);
 
   useEffect(() => {
+    let cancelled = false;
     mountedRef.current = true;
-    pollingRef.current = true;
 
     const poll = async () => {
-      while (pollingRef.current) {
+      while (!cancelled) {
         await fetchOverview();
-        if (!pollingRef.current) break;
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        if (cancelled) break;
+        await delay(POLL_INTERVAL_MS);
       }
     };
 
     void poll();
 
     return () => {
+      cancelled = true;
       mountedRef.current = false;
-      pollingRef.current = false;
     };
   }, [fetchOverview]);
 
