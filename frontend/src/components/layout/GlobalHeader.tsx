@@ -26,7 +26,12 @@ export function GlobalHeader({
       >
         <Menu size={20} aria-hidden="true" />
       </button>
-      <span className="global-header-brand">A7LAS</span>
+      <div className="global-header-brand">
+        <span className="global-header-wordmark" aria-label="A7LAS">
+          A<span className="global-header-wordmark-accent">7</span>LAS
+        </span>
+        <span className="global-header-subtitle">Personal Operating Space</span>
+      </div>
     </header>
   );
 }

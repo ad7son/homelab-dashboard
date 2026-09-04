@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { GlobalHeader } from './GlobalHeader';
 import { Sidebar } from './Sidebar';
 
@@ -7,7 +7,18 @@ const SIDEBAR_ID = 'a7las-sidebar';
 const MENU_BUTTON_ID = 'a7las-sidebar-menu-button';
 const MOBILE_MEDIA_QUERY = '(max-width: 768px)';
 
+function documentTitleForPath(pathname: string): string {
+  if (pathname === '/settings') {
+    return 'Settings · A7LAS';
+  }
+  if (pathname === '/homelab' || pathname.startsWith('/homelab/')) {
+    return 'Home Lab · A7LAS';
+  }
+  return 'Page Not Found · A7LAS';
+}
+
 export function AppShell() {
+  const { pathname } = useLocation();
   const [desktopOpen, setDesktopOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() =>
@@ -15,6 +26,10 @@ export function AppShell() {
       ? window.matchMedia(MOBILE_MEDIA_QUERY).matches
       : false,
   );
+
+  useEffect(() => {
+    document.title = documentTitleForPath(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
