@@ -1,6 +1,7 @@
 import platform
 from pathlib import Path
 
+import psutil
 import pytest
 from fastapi.testclient import TestClient
 
@@ -88,6 +89,42 @@ def test_cpu_returns_200(api_client: TestClient) -> None:
     assert 0 <= data["usage_percent"] <= 100
     assert data["physical_cores"] > 0
     assert data["logical_cores"] > 0
+
+
+def test_cpu_temperature_null_when_sensors_raise_oserror(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OS-level temperature read failure must not fail /api/cpu."""
+
+    def raise_oserror() -> None:
+        raise OSError("Permission denied")
+
+    monkeypatch.setattr(psutil, "sensors_temperatures", raise_oserror, raising=False)
+
+    response = api_client.get("/api/cpu")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["temperature"] is None
+    assert 0 <= data["usage_percent"] <= 100
+
+
+def test_cpu_frequency_null_when_cpu_freq_raises_oserror(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OS-level frequency read failure must not fail /api/cpu."""
+
+    def raise_oserror() -> None:
+        raise OSError("Permission denied")
+
+    monkeypatch.setattr(psutil, "cpu_freq", raise_oserror)
+
+    response = api_client.get("/api/cpu")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["frequency"] is None
+    assert 0 <= data["usage_percent"] <= 100
 
 
 # ---------------------------------------------------------------------------

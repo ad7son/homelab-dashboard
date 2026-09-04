@@ -20,7 +20,7 @@ def _get_cpu_temperature() -> Optional[float]:
         return None
     try:
         temps = psutil.sensors_temperatures()
-    except (AttributeError, NotImplementedError):
+    except (AttributeError, NotImplementedError, OSError):
         return None
     if not temps:
         return None
@@ -36,7 +36,7 @@ def _get_cpu_temperature() -> Optional[float]:
 def _get_cpu_frequency() -> Optional[float]:
     try:
         freq = psutil.cpu_freq()
-    except (AttributeError, NotImplementedError):
+    except (AttributeError, NotImplementedError, OSError):
         return None
     if freq is None or freq.current is None:
         return None
