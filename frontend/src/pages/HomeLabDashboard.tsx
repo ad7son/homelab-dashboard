@@ -8,7 +8,7 @@ import { StorageList } from '../components/sections/StorageList';
 import { SystemInfoSection } from '../components/sections/SystemInfo';
 import { useSystemOverview } from '../hooks/useSystemOverview';
 
-export function Dashboard() {
+export function HomeLabDashboard() {
   const { data, loading, error, lastUpdated, status, refresh } =
     useSystemOverview();
 
