@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:homelab": "vite --mode homelab",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
