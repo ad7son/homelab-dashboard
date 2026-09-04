@@ -1,4 +1,5 @@
 import { HomeLabHeader } from '../components/homelab/HomeLabHeader';
+import { PageContainer } from '../components/layout/PageContainer';
 import { CpuCard } from '../components/metrics/CpuCard';
 import { MemoryCard } from '../components/metrics/MemoryCard';
 import { NetworkCard } from '../components/metrics/NetworkCard';
@@ -14,14 +15,14 @@ export function HomeLabDashboard() {
 
   if (loading && !data) {
     return (
-      <div className="dashboard">
+      <PageContainer>
         <div className="loading-state">Loading system overview…</div>
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="dashboard">
+    <PageContainer>
       <HomeLabHeader
         system={data?.system ?? null}
         status={status}
@@ -56,6 +57,6 @@ export function HomeLabDashboard() {
           Unable to load system data. Waiting for connection…
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

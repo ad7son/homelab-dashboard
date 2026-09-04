@@ -3,6 +3,7 @@ import {
   formatRelativeTime,
   formatUptime,
 } from '../../utils/format';
+import { PageHeader } from '../layout/PageHeader';
 
 interface HomeLabHeaderProps {
   system: SystemInfo | null;
@@ -23,32 +24,32 @@ export function HomeLabHeader({
   lastUpdated,
   onRefresh,
 }: HomeLabHeaderProps) {
+  const description = system ? (
+    <p className="homelab-header-subtitle">
+      {system.hostname} · {system.operating_system} · Uptime{' '}
+      {formatUptime(system.uptime)}
+    </p>
+  ) : undefined;
+
+  const actions = (
+    <div className="homelab-header-meta">
+      <span className={`status-badge status-${status}`}>
+        {STATUS_LABELS[status]}
+      </span>
+      <span className="homelab-last-updated">
+        Last updated: {formatRelativeTime(lastUpdated)}
+      </span>
+      <button
+        type="button"
+        className="homelab-refresh-button"
+        onClick={onRefresh}
+      >
+        Refresh
+      </button>
+    </div>
+  );
+
   return (
-    <header className="homelab-header">
-      <div className="homelab-header-main">
-        <h1>Home Lab Dashboard</h1>
-        {system && (
-          <p className="homelab-header-subtitle">
-            {system.hostname} · {system.operating_system} · Uptime{' '}
-            {formatUptime(system.uptime)}
-          </p>
-        )}
-      </div>
-      <div className="homelab-header-meta">
-        <span className={`status-badge status-${status}`}>
-          {STATUS_LABELS[status]}
-        </span>
-        <span className="homelab-last-updated">
-          Last updated: {formatRelativeTime(lastUpdated)}
-        </span>
-        <button
-          type="button"
-          className="homelab-refresh-button"
-          onClick={onRefresh}
-        >
-          Refresh
-        </button>
-      </div>
-    </header>
+    <PageHeader title="Home Lab" description={description} actions={actions} />
   );
 }

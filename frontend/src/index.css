@@ -243,13 +243,13 @@ body {
   }
 }
 
-.dashboard {
+.page-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1.5rem;
 }
 
-.homelab-header {
+.page-header {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -260,11 +260,31 @@ body {
   border-bottom: 1px solid #334155;
 }
 
-.homelab-header-main h1 {
+.page-header-main {
+  min-width: 0;
+}
+
+.page-header-title {
   margin: 0 0 0.25rem;
   font-size: 1.75rem;
   font-weight: 600;
   color: #f8fafc;
+}
+
+.page-header-description {
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.page-header-description p {
+  margin: 0;
+}
+
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .homelab-header-subtitle {
