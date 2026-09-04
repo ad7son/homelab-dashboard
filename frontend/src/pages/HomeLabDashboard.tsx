@@ -1,4 +1,4 @@
-import { Header } from '../components/layout/Header';
+import { HomeLabHeader } from '../components/homelab/HomeLabHeader';
 import { CpuCard } from '../components/metrics/CpuCard';
 import { MemoryCard } from '../components/metrics/MemoryCard';
 import { NetworkCard } from '../components/metrics/NetworkCard';
@@ -22,7 +22,7 @@ export function HomeLabDashboard() {
 
   return (
     <div className="dashboard">
-      <Header
+      <HomeLabHeader
         system={data?.system ?? null}
         status={status}
         lastUpdated={lastUpdated}

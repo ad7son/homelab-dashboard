@@ -27,13 +27,37 @@ body {
   min-height: 100vh;
 }
 
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.global-header {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #334155;
+  background-color: #0f172a;
+}
+
+.global-header-brand {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+}
+
+.app-main {
+  flex: 1;
+}
+
 .dashboard {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1.5rem;
 }
 
-.dashboard-header {
+.homelab-header {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -44,20 +68,20 @@ body {
   border-bottom: 1px solid #334155;
 }
 
-.header-main h1 {
+.homelab-header-main h1 {
   margin: 0 0 0.25rem;
   font-size: 1.75rem;
   font-weight: 600;
   color: #f8fafc;
 }
 
-.header-subtitle {
+.homelab-header-subtitle {
   margin: 0;
   color: #94a3b8;
   font-size: 0.95rem;
 }
 
-.header-meta {
+.homelab-header-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -89,12 +113,12 @@ body {
   color: #fca5a5;
 }
 
-.last-updated {
+.homelab-last-updated {
   color: #94a3b8;
   font-size: 0.875rem;
 }
 
-.refresh-button {
+.homelab-refresh-button {
   padding: 0.4rem 0.9rem;
   border: 1px solid #475569;
   border-radius: 6px;
@@ -104,7 +128,7 @@ body {
   cursor: pointer;
 }
 
-.refresh-button:hover {
+.homelab-refresh-button:hover {
   background: #334155;
 }
 

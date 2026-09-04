@@ -4,7 +4,7 @@ import {
   formatUptime,
 } from '../../utils/format';
 
-interface HeaderProps {
+interface HomeLabHeaderProps {
   system: SystemInfo | null;
   status: ConnectionStatus;
   lastUpdated: Date | null;
@@ -17,31 +17,35 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
   offline: 'Offline',
 };
 
-export function Header({
+export function HomeLabHeader({
   system,
   status,
   lastUpdated,
   onRefresh,
-}: HeaderProps) {
+}: HomeLabHeaderProps) {
   return (
-    <header className="dashboard-header">
-      <div className="header-main">
+    <header className="homelab-header">
+      <div className="homelab-header-main">
         <h1>Home Lab Dashboard</h1>
         {system && (
-          <p className="header-subtitle">
+          <p className="homelab-header-subtitle">
             {system.hostname} · {system.operating_system} · Uptime{' '}
             {formatUptime(system.uptime)}
           </p>
         )}
       </div>
-      <div className="header-meta">
+      <div className="homelab-header-meta">
         <span className={`status-badge status-${status}`}>
           {STATUS_LABELS[status]}
         </span>
-        <span className="last-updated">
+        <span className="homelab-last-updated">
           Last updated: {formatRelativeTime(lastUpdated)}
         </span>
-        <button type="button" className="refresh-button" onClick={onRefresh}>
+        <button
+          type="button"
+          className="homelab-refresh-button"
+          onClick={onRefresh}
+        >
           Refresh
         </button>
       </div>
