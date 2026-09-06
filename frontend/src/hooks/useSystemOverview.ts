@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSystemOverview } from '../services/api';
+import type { RealtimeSample } from '../types/realtime';
 import type { ConnectionStatus, Overview } from '../types/system';
+import { useRealtimeSamples } from './useRealtimeSamples';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -11,6 +13,7 @@ interface UseSystemOverviewResult {
   lastUpdated: Date | null;
   status: ConnectionStatus;
   refresh: () => void;
+  samples: RealtimeSample[];
 }
 
 function delay(ms: number): Promise<void> {
@@ -28,6 +31,7 @@ export function useSystemOverview(): UseSystemOverviewResult {
   const failureCountRef = useRef(0);
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
+  const { samples, appendSample } = useRealtimeSamples();
 
   const fetchOverview = useCallback(async () => {
     if (inFlightRef.current) {
@@ -40,11 +44,13 @@ export function useSystemOverview(): UseSystemOverviewResult {
       const overview = await getSystemOverview();
       if (!mountedRef.current) return;
 
+      const updatedAt = new Date();
       setData(overview);
-      setLastUpdated(new Date());
+      setLastUpdated(updatedAt);
       setError(null);
       setStatus('online');
       failureCountRef.current = 0;
+      appendSample(overview, updatedAt.getTime());
     } catch (err) {
       if (!mountedRef.current) return;
 
@@ -64,7 +70,7 @@ export function useSystemOverview(): UseSystemOverviewResult {
         setLoading(false);
       }
     }
-  }, []);
+  }, [appendSample]);
 
   const refresh = useCallback(() => {
     void fetchOverview();
@@ -97,5 +103,6 @@ export function useSystemOverview(): UseSystemOverviewResult {
     lastUpdated,
     status,
     refresh,
+    samples,
   };
 }
