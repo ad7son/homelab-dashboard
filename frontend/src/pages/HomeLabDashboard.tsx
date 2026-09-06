@@ -1,6 +1,7 @@
 import { RealtimeMonitoring } from '../components/charts/RealtimeMonitoring';
 import { HomeLabHeader } from '../components/homelab/HomeLabHeader';
 import { PageContainer } from '../components/layout/PageContainer';
+import { SectionHeader } from '../components/layout/SectionHeader';
 import { CpuCard } from '../components/metrics/CpuCard';
 import { MemoryCard } from '../components/metrics/MemoryCard';
 import { NetworkCard } from '../components/metrics/NetworkCard';
@@ -39,18 +40,38 @@ export function HomeLabDashboard() {
 
       {data ? (
         <>
-          <section className="metrics-grid">
-            <CpuCard cpu={data.cpu} />
-            <MemoryCard memory={data.memory} />
-            <StorageCard disks={data.disks} />
-            <NetworkCard network={data.network} />
+          <section
+            className="current-status"
+            aria-labelledby="current-status-heading"
+          >
+            <SectionHeader
+              id="current-status-heading"
+              title="Current Status"
+              description="Live system health at a glance"
+            />
+            <div className="metrics-grid">
+              <CpuCard cpu={data.cpu} samples={samples} />
+              <MemoryCard memory={data.memory} samples={samples} />
+              <StorageCard disks={data.disks} />
+              <NetworkCard network={data.network} />
+            </div>
           </section>
 
           <RealtimeMonitoring samples={samples} />
 
-          <section className="details-grid">
-            <SystemInfoSection system={data.system} />
-            <CpuDetails cpu={data.cpu} />
+          <section
+            className="system-details"
+            aria-labelledby="system-details-heading"
+          >
+            <SectionHeader
+              id="system-details-heading"
+              title="System Details"
+              tone="secondary"
+            />
+            <div className="details-grid">
+              <SystemInfoSection system={data.system} />
+              <CpuDetails cpu={data.cpu} />
+            </div>
           </section>
 
           <StorageList disks={data.disks} />

@@ -1,8 +1,5 @@
 import type { ConnectionStatus, SystemInfo } from '../../types/system';
-import {
-  formatRelativeTime,
-  formatUptime,
-} from '../../utils/format';
+import { formatClockTime, formatUptime } from '../../utils/format';
 import { PageHeader } from '../layout/PageHeader';
 
 interface HomeLabHeaderProps {
@@ -33,11 +30,12 @@ export function HomeLabHeader({
 
   const actions = (
     <div className="homelab-header-meta">
-      <span className={`status-badge status-${status}`}>
+      <span className={`homelab-status homelab-status-${status}`}>
+        <span className="homelab-status-dot" aria-hidden="true" />
         {STATUS_LABELS[status]}
       </span>
       <span className="homelab-last-updated">
-        Last updated: {formatRelativeTime(lastUpdated)}
+        Last updated {formatClockTime(lastUpdated)}
       </span>
       <button
         type="button"

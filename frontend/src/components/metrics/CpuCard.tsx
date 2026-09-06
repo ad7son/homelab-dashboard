@@ -1,30 +1,30 @@
+import type { RealtimeSample } from '../../types/realtime';
 import type { CpuInfo } from '../../types/system';
 import {
-  formatFrequency,
   formatNullable,
   formatPercent,
   formatTemperature,
 } from '../../utils/format';
+import { averageRecentMetric } from '../../utils/realtimeAverages';
 
 interface CpuCardProps {
   cpu: CpuInfo;
+  samples: RealtimeSample[];
 }
 
-export function CpuCard({ cpu }: CpuCardProps) {
+export function CpuCard({ cpu, samples }: CpuCardProps) {
+  const average30s = averageRecentMetric(samples, 'cpuUsagePercent');
+  const temperature = formatNullable(cpu.temperature, formatTemperature);
+  const averageLabel =
+    average30s == null ? '30s avg N/A' : `30s avg ${formatPercent(average30s)}`;
+
   return (
     <article className="metric-card">
       <h2>CPU</h2>
       <p className="metric-primary">{formatPercent(cpu.usage_percent)}</p>
-      <div className="metric-secondary">
-        <span>
-          Temp:{' '}
-          {formatNullable(cpu.temperature, formatTemperature)}
-        </span>
-        <span>
-          Freq:{' '}
-          {formatNullable(cpu.frequency, formatFrequency)}
-        </span>
-      </div>
+      <p className="metric-secondary-line">
+        {temperature} · {averageLabel}
+      </p>
       <div
         className="usage-bar"
         role="progressbar"

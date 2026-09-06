@@ -376,29 +376,44 @@ body {
   gap: var(--space-sm);
 }
 
-.status-badge {
-  display: inline-block;
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-pill);
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.homelab-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
 }
 
-.status-online {
-  background-color: var(--color-success-bg);
+.homelab-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-subtle);
+}
+
+.homelab-status-online {
   color: var(--color-success-text);
 }
 
-.status-unstable {
-  background-color: var(--color-warning-bg);
+.homelab-status-online .homelab-status-dot {
+  background: var(--color-success-text);
+}
+
+.homelab-status-unstable {
   color: var(--color-warning-text);
 }
 
-.status-offline {
-  background-color: var(--color-danger-bg);
+.homelab-status-unstable .homelab-status-dot {
+  background: var(--color-warning-text);
+}
+
+.homelab-status-offline {
   color: var(--color-danger-text);
+}
+
+.homelab-status-offline .homelab-status-dot {
+  background: var(--color-danger-text);
 }
 
 .homelab-last-updated {
@@ -420,38 +435,63 @@ body {
   background: var(--color-surface-hover);
 }
 
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
-}
-
-.realtime-monitoring {
-  margin-bottom: var(--space-lg);
-}
-
-.realtime-monitoring-header {
+.section-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  justify-content: space-between;
+  align-items: flex-end;
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
 }
 
-.realtime-monitoring-header h2 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-strong);
+.section-header-main {
+  min-width: 0;
 }
 
-.realtime-monitoring-subtitle {
+.section-header-title {
+  margin: 0;
   font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.section-header-secondary .section-header-title {
   color: var(--color-text-subtle);
+}
+
+.section-header-description {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.section-header-meta {
+  color: var(--color-text-subtle);
+}
+
+.section-header-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.current-status,
+.system-details,
+.storage-details,
+.realtime-monitoring {
+  margin-bottom: var(--space-lg);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
 }
 
 .realtime-charts-grid {
@@ -542,22 +582,35 @@ body {
 
 .metric-card h2 {
   margin: 0 0 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 }
 
 .metric-primary {
-  margin: 0 0 var(--space-sm);
-  font-size: 2rem;
+  margin: 0 0 0.45rem;
+  font-size: 1.85rem;
   font-weight: 700;
+  line-height: 1.1;
   color: var(--color-text-strong);
 }
 
 .metric-primary-sm {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
+}
+
+.metric-secondary-line {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.metric-secondary-line-quiet {
+  margin-bottom: 0;
+  color: var(--color-text-subtle);
 }
 
 .metric-secondary {
@@ -571,15 +624,22 @@ body {
 
 .network-rates {
   display: flex;
-  gap: var(--space-lg);
-  margin-bottom: var(--space-sm);
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+}
+
+.network-rate {
+  min-width: 0;
 }
 
 .rate-label {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--color-text-subtle);
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.1rem;
 }
 
 .usage-bar {
@@ -627,11 +687,17 @@ body {
   padding: 1.25rem;
 }
 
+.detail-section-quiet {
+  background: transparent;
+}
+
 .detail-section h2 {
   margin: 0 0 var(--space-md);
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .detail-grid {

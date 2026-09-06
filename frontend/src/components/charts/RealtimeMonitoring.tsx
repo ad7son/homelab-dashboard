@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
 import type { RealtimeSample } from '../../types/realtime';
-import { formatBytesPerSecond, formatPercent, formatTemperature } from '../../utils/format';
+import {
+  formatBytesPerSecond,
+  formatPercent,
+  formatTemperature,
+} from '../../utils/format';
+import { SectionHeader } from '../layout/SectionHeader';
 import { RealtimeChart } from './RealtimeChart';
 import { hasValidSeriesValues, toChartPoints } from './chartUtils';
 
@@ -16,11 +21,16 @@ export function RealtimeMonitoring({ samples }: RealtimeMonitoringProps) {
   );
 
   return (
-    <section className="realtime-monitoring" aria-labelledby="realtime-monitoring-heading">
-      <div className="realtime-monitoring-header">
-        <h2 id="realtime-monitoring-heading">Realtime Monitoring</h2>
-        <span className="realtime-monitoring-subtitle">Last 5 minutes</span>
-      </div>
+    <section
+      className="realtime-monitoring"
+      aria-labelledby="realtime-monitoring-heading"
+    >
+      <SectionHeader
+        id="realtime-monitoring-heading"
+        title="Realtime Monitoring"
+        description="Live behavior and short-term movement"
+        meta={<span className="section-header-eyebrow">Last 5 minutes</span>}
+      />
 
       <div className="realtime-charts-grid">
         <RealtimeChart

@@ -1,26 +1,25 @@
+import type { RealtimeSample } from '../../types/realtime';
 import type { MemoryInfo } from '../../types/system';
 import { formatBytes, formatPercent } from '../../utils/format';
+import { averageRecentMetric } from '../../utils/realtimeAverages';
 
 interface MemoryCardProps {
   memory: MemoryInfo;
+  samples: RealtimeSample[];
 }
 
-export function MemoryCard({ memory }: MemoryCardProps) {
+export function MemoryCard({ memory, samples }: MemoryCardProps) {
+  const average30s = averageRecentMetric(samples, 'memoryUsagePercent');
+  const averageLabel =
+    average30s == null ? '30s avg N/A' : `30s avg ${formatPercent(average30s)}`;
+
   return (
     <article className="metric-card">
       <h2>Memory</h2>
       <p className="metric-primary">{formatPercent(memory.usage_percent)}</p>
-      <div className="metric-secondary">
-        <span>
-          Used: {formatBytes(memory.used)} / {formatBytes(memory.total)}
-        </span>
-        <span>Available: {formatBytes(memory.available)}</span>
-        <span>
-          Swap: {formatBytes(memory.swap.used)} /{' '}
-          {formatBytes(memory.swap.total)} (
-          {formatPercent(memory.swap.usage_percent)})
-        </span>
-      </div>
+      <p className="metric-secondary-line">
+        {averageLabel} · {formatBytes(memory.used)} / {formatBytes(memory.total)}
+      </p>
       <div
         className="usage-bar"
         role="progressbar"

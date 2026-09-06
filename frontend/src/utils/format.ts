@@ -64,3 +64,13 @@ export function formatRelativeTime(date: Date | null): string {
   const hours = Math.floor(minutes / 60);
   return `${hours} hour${hours === 1 ? '' : 's'} ago`;
 }
+
+export function formatClockTime(date: Date | null): string {
+  if (!date) return 'Never';
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}

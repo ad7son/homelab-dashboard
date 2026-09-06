@@ -25,9 +25,7 @@ export function StorageCard({ disks }: StorageCardProps) {
       <article className="metric-card">
         <h2>Storage</h2>
         <p className="metric-primary">N/A</p>
-        <div className="metric-secondary">
-          <span>No filesystem data available</span>
-        </div>
+        <p className="metric-secondary-line">No filesystem data available</p>
       </article>
     );
   }
@@ -36,13 +34,10 @@ export function StorageCard({ disks }: StorageCardProps) {
     <article className="metric-card">
       <h2>Storage</h2>
       <p className="metric-primary">{formatPercent(primary.usage_percent)}</p>
-      <div className="metric-secondary">
-        <span>
-          Used: {formatBytes(primary.used_bytes)} /{' '}
-          {formatBytes(primary.total_bytes)}
-        </span>
-        <span>Mount: {primary.mount_point}</span>
-      </div>
+      <p className="metric-secondary-line">
+        {formatBytes(primary.used_bytes)} / {formatBytes(primary.total_bytes)} ·{' '}
+        {primary.mount_point}
+      </p>
       <div
         className="usage-bar"
         role="progressbar"

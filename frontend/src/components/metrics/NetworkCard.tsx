@@ -10,23 +10,23 @@ export function NetworkCard({ network }: NetworkCardProps) {
     <article className="metric-card">
       <h2>Network</h2>
       <div className="network-rates">
-        <div>
-          <span className="rate-label">↓ Download</span>
+        <div className="network-rate">
+          <span className="rate-label">Download</span>
           <span className="metric-primary metric-primary-sm">
-            {formatNullable(network.download_rate, formatBytesPerSecond)}
+            ↓ {formatNullable(network.download_rate, formatBytesPerSecond)}
           </span>
         </div>
-        <div>
-          <span className="rate-label">↑ Upload</span>
+        <div className="network-rate">
+          <span className="rate-label">Upload</span>
           <span className="metric-primary metric-primary-sm">
-            {formatNullable(network.upload_rate, formatBytesPerSecond)}
+            ↑ {formatNullable(network.upload_rate, formatBytesPerSecond)}
           </span>
         </div>
       </div>
-      <div className="metric-secondary">
-        <span>Interface: {network.interface ?? 'N/A'}</span>
-        <span>IPv4: {network.ip_address ?? 'N/A'}</span>
-      </div>
+      <p className="metric-secondary-line metric-secondary-line-quiet">
+        {network.interface ?? 'N/A'}
+        {network.ip_address ? ` · ${network.ip_address}` : ''}
+      </p>
     </article>
   );
 }
