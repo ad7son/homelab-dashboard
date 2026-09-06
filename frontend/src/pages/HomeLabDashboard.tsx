@@ -1,3 +1,4 @@
+import { RealtimeMonitoring } from '../components/charts/RealtimeMonitoring';
 import { HomeLabHeader } from '../components/homelab/HomeLabHeader';
 import { PageContainer } from '../components/layout/PageContainer';
 import { CpuCard } from '../components/metrics/CpuCard';
@@ -10,7 +11,7 @@ import { SystemInfoSection } from '../components/sections/SystemInfo';
 import { useSystemOverview } from '../hooks/useSystemOverview';
 
 export function HomeLabDashboard() {
-  const { data, loading, error, lastUpdated, status, refresh } =
+  const { data, loading, error, lastUpdated, status, refresh, samples } =
     useSystemOverview();
 
   if (loading && !data) {
@@ -44,6 +45,8 @@ export function HomeLabDashboard() {
             <StorageCard disks={data.disks} />
             <NetworkCard network={data.network} />
           </section>
+
+          <RealtimeMonitoring samples={samples} />
 
           <section className="details-grid">
             <SystemInfoSection system={data.system} />

@@ -27,6 +27,13 @@
   --color-text-subtle: #64748b;
   --color-accent: #38bdf8;
 
+  /* Chart series */
+  --color-chart-cpu: #3b82f6;
+  --color-chart-temperature: #f59e0b;
+  --color-chart-memory: #8b5cf6;
+  --color-chart-download: #38bdf8;
+  --color-chart-upload: #10b981;
+
   /* Semantic status colors */
   --color-success-bg: #14532d;
   --color-success-text: #86efac;
@@ -420,9 +427,103 @@ body {
   margin-bottom: var(--space-lg);
 }
 
+.realtime-monitoring {
+  margin-bottom: var(--space-lg);
+}
+
+.realtime-monitoring-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.realtime-monitoring-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.realtime-monitoring-subtitle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.realtime-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.realtime-chart-card {
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1rem 0.75rem;
+}
+
+.realtime-chart-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.realtime-chart-body {
+  width: 100%;
+  height: 220px;
+}
+
+.realtime-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: var(--space-md);
+}
+
+.realtime-chart-tooltip {
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+}
+
+.realtime-chart-tooltip-time {
+  margin-bottom: 0.35rem;
+  color: var(--color-text-muted);
+}
+
+.realtime-chart-tooltip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realtime-chart-tooltip-list li + li {
+  margin-top: 0.2rem;
+}
+
 @media (max-width: 900px) {
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .realtime-charts-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
