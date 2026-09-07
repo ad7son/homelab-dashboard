@@ -198,6 +198,40 @@ def fetch_metric_sample(
     if row is None:
         return None
 
+    return _row_to_metric_sample(row)
+
+
+def read_metric_samples(
+    connection: sqlite3.Connection,
+    start_timestamp_ms: int,
+    end_timestamp_ms: int,
+) -> list[MetricSampleRecord]:
+    """
+    Read samples in an inclusive timestamp window, ordered ascending.
+
+    Range semantics (15m/1h/...) belong in the service layer, not here.
+    """
+    rows = connection.execute(
+        """
+        SELECT
+            timestamp_ms,
+            cpu_usage_percent,
+            cpu_temperature_celsius,
+            memory_usage_percent,
+            network_download_bytes_per_second,
+            network_upload_bytes_per_second
+        FROM metric_samples
+        WHERE timestamp_ms >= ?
+          AND timestamp_ms <= ?
+        ORDER BY timestamp_ms ASC
+        """,
+        (start_timestamp_ms, end_timestamp_ms),
+    ).fetchall()
+
+    return [_row_to_metric_sample(row) for row in rows]
+
+
+def _row_to_metric_sample(row: sqlite3.Row) -> MetricSampleRecord:
     return MetricSampleRecord(
         timestamp_ms=int(row["timestamp_ms"]),
         cpu_usage_percent=float(row["cpu_usage_percent"]),

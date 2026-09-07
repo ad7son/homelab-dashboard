@@ -14,6 +14,7 @@ from app.db.metrics_database import (
     get_schema_version,
     initialize_metrics_database,
     insert_metric_sample,
+    read_metric_samples,
     resolve_metrics_db_path,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "get_schema_version",
     "initialize_metrics_database",
     "insert_metric_sample",
+    "read_metric_samples",
     "resolve_metrics_db_path",
 ]
