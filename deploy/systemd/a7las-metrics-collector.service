@@ -1,0 +1,17 @@
+[Unit]
+Description=A7LAS historical metrics collector
+After=local-fs.target
+RequiresMountsFor=/srv
+
+[Service]
+Type=simple
+User=adson
+Group=adson
+WorkingDirectory=/srv/homelab-dashboard/backend
+Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/metrics.db
+ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m app.collector.metrics_collector
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
