@@ -18,13 +18,15 @@ export interface ChartSeries {
   color: string;
 }
 
-interface RealtimeChartProps {
+interface MetricChartProps {
   title: string;
   data: ChartPoint[];
   series: ChartSeries[];
   yDomain?: [number | 'auto', number | 'auto'];
   yTickFormatter?: (value: number) => string;
   formatValue?: (value: number) => string;
+  formatAxisTime?: (timestamp: number) => string;
+  formatTooltipTime?: (timestamp: number) => string;
   yAxisWidth?: number;
   emptyMessage?: string;
   unavailable?: boolean;
@@ -44,6 +46,7 @@ interface ChartTooltipProps {
   label?: number | string;
   payload?: TooltipPayloadItem[];
   formatValue?: (value: number) => string;
+  formatTooltipTime: (timestamp: number) => string;
 }
 
 function ChartTooltip({
@@ -51,6 +54,7 @@ function ChartTooltip({
   label,
   payload,
   formatValue,
+  formatTooltipTime,
 }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -59,13 +63,13 @@ function ChartTooltip({
   const timestamp = typeof label === 'number' ? label : Number(label);
 
   return (
-    <div className="realtime-chart-tooltip">
-      <div className="realtime-chart-tooltip-time">
+    <div className="metric-chart-tooltip">
+      <div className="metric-chart-tooltip-time">
         {Number.isFinite(timestamp)
-          ? formatChartTooltipTime(timestamp)
+          ? formatTooltipTime(timestamp)
           : String(label)}
       </div>
-      <ul className="realtime-chart-tooltip-list">
+      <ul className="metric-chart-tooltip-list">
         {payload.map((item) => {
           const value = item.value;
           const display =
@@ -87,27 +91,27 @@ function ChartTooltip({
   );
 }
 
-export function RealtimeChart({
+export function MetricChart({
   title,
   data,
   series,
   yDomain,
   yTickFormatter,
   formatValue,
+  formatAxisTime = formatChartAxisTime,
+  formatTooltipTime = formatChartTooltipTime,
   yAxisWidth = 44,
   emptyMessage = 'Collecting realtime data…',
   unavailable = false,
   unavailableMessage = 'Data unavailable',
   showLegend = false,
-}: RealtimeChartProps) {
+}: MetricChartProps) {
   let body: ReactNode;
 
   if (unavailable) {
-    body = (
-      <div className="realtime-chart-empty">{unavailableMessage}</div>
-    );
+    body = <div className="metric-chart-empty">{unavailableMessage}</div>;
   } else if (data.length < 2) {
-    body = <div className="realtime-chart-empty">{emptyMessage}</div>;
+    body = <div className="metric-chart-empty">{emptyMessage}</div>;
   } else {
     body = (
       <ResponsiveContainer width="100%" height="100%">
@@ -124,7 +128,7 @@ export function RealtimeChart({
             dataKey="timestamp"
             type="number"
             domain={['dataMin', 'dataMax']}
-            tickFormatter={formatChartAxisTime}
+            tickFormatter={formatAxisTime}
             tick={{ fill: 'var(--color-text-subtle)', fontSize: 11 }}
             tickLine={false}
             axisLine={{ stroke: 'var(--color-border)' }}
@@ -139,7 +143,12 @@ export function RealtimeChart({
             axisLine={false}
           />
           <Tooltip
-            content={<ChartTooltip formatValue={formatValue} />}
+            content={
+              <ChartTooltip
+                formatValue={formatValue}
+                formatTooltipTime={formatTooltipTime}
+              />
+            }
             cursor={{ stroke: 'var(--color-border-strong)' }}
           />
           {showLegend && (
@@ -167,9 +176,12 @@ export function RealtimeChart({
   }
 
   return (
-    <article className="realtime-chart-card">
-      <h3 className="realtime-chart-title">{title}</h3>
-      <div className="realtime-chart-body">{body}</div>
+    <article className="metric-chart-card">
+      <h3 className="metric-chart-title">{title}</h3>
+      <div className="metric-chart-body">{body}</div>
     </article>
   );
 }
+
+/** @deprecated Prefer MetricChart */
+export const RealtimeChart = MetricChart;

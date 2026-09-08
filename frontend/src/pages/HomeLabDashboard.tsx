@@ -1,4 +1,8 @@
-import { RealtimeMonitoring } from '../components/charts/RealtimeMonitoring';
+import { useState } from 'react';
+import {
+  MonitoringSection,
+  type MonitoringMode,
+} from '../components/charts/MonitoringSection';
 import { ConnectionBanner } from '../components/homelab/ConnectionBanner';
 import { HomeLabHeader } from '../components/homelab/HomeLabHeader';
 import { HomeLabLoadState } from '../components/homelab/HomeLabLoadState';
@@ -16,6 +20,7 @@ import { useSystemOverview } from '../hooks/useSystemOverview';
 export function HomeLabDashboard() {
   const { data, loading, error, lastUpdated, status, refresh, samples } =
     useSystemOverview();
+  const [monitoringMode, setMonitoringMode] = useState<MonitoringMode>('live');
 
   if (loading && !data) {
     return (
@@ -34,11 +39,7 @@ export function HomeLabDashboard() {
           lastUpdated={lastUpdated}
           onRefresh={refresh}
         />
-        <HomeLabLoadState
-          mode="failed"
-          error={error}
-          onRetry={refresh}
-        />
+        <HomeLabLoadState mode="failed" error={error} onRetry={refresh} />
       </PageContainer>
     );
   }
@@ -77,7 +78,11 @@ export function HomeLabDashboard() {
         </div>
       </section>
 
-      <RealtimeMonitoring samples={samples} />
+      <MonitoringSection
+        samples={samples}
+        mode={monitoringMode}
+        onModeChange={setMonitoringMode}
+      />
 
       <section
         className="system-details"

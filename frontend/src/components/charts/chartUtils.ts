@@ -1,7 +1,14 @@
+import type { HistoricalMetricSample, HistoricalRange } from '../../types/history';
 import type { RealtimeSample } from '../../types/realtime';
 
 /** Gap larger than ~2 polling intervals inserts a chart-only break. */
-export const CHART_GAP_THRESHOLD_MS = 7000;
+export const REALTIME_CHART_GAP_THRESHOLD_MS = 7000;
+
+/** Gap larger than ~2 collector intervals for historical charts. */
+export const HISTORY_CHART_GAP_THRESHOLD_MS = 65_000;
+
+/** @deprecated Use REALTIME_CHART_GAP_THRESHOLD_MS */
+export const CHART_GAP_THRESHOLD_MS = REALTIME_CHART_GAP_THRESHOLD_MS;
 
 export interface ChartPoint {
   timestamp: number;
@@ -12,20 +19,23 @@ export interface ChartPoint {
   networkUploadBytesPerSecond: number | null;
 }
 
-export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
-  if (samples.length === 0) {
+function insertChartGaps(
+  points: ChartPoint[],
+  gapThresholdMs: number,
+): ChartPoint[] {
+  if (points.length === 0) {
     return [];
   }
 
-  const points: ChartPoint[] = [];
+  const result: ChartPoint[] = [];
 
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = samples[index];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
 
     if (index > 0) {
-      const previous = samples[index - 1];
-      if (sample.timestamp - previous.timestamp > CHART_GAP_THRESHOLD_MS) {
-        points.push({
+      const previous = points[index - 1];
+      if (point.timestamp - previous.timestamp > gapThresholdMs) {
+        result.push({
           timestamp: previous.timestamp + 1,
           cpuUsagePercent: null,
           cpuTemperatureCelsius: null,
@@ -36,17 +46,38 @@ export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
       }
     }
 
-    points.push({
-      timestamp: sample.timestamp,
-      cpuUsagePercent: sample.cpuUsagePercent,
-      cpuTemperatureCelsius: sample.cpuTemperatureCelsius,
-      memoryUsagePercent: sample.memoryUsagePercent,
-      networkDownloadBytesPerSecond: sample.networkDownloadBytesPerSecond,
-      networkUploadBytesPerSecond: sample.networkUploadBytesPerSecond,
-    });
+    result.push(point);
   }
 
-  return points;
+  return result;
+}
+
+export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
+  const points = samples.map((sample) => ({
+    timestamp: sample.timestamp,
+    cpuUsagePercent: sample.cpuUsagePercent,
+    cpuTemperatureCelsius: sample.cpuTemperatureCelsius,
+    memoryUsagePercent: sample.memoryUsagePercent,
+    networkDownloadBytesPerSecond: sample.networkDownloadBytesPerSecond,
+    networkUploadBytesPerSecond: sample.networkUploadBytesPerSecond,
+  }));
+
+  return insertChartGaps(points, REALTIME_CHART_GAP_THRESHOLD_MS);
+}
+
+export function historicalSamplesToChartPoints(
+  samples: HistoricalMetricSample[],
+): ChartPoint[] {
+  const points = samples.map((sample) => ({
+    timestamp: sample.timestamp_ms,
+    cpuUsagePercent: sample.cpu_usage_percent,
+    cpuTemperatureCelsius: sample.cpu_temperature_celsius,
+    memoryUsagePercent: sample.memory_usage_percent,
+    networkDownloadBytesPerSecond: sample.network_download_bytes_per_second,
+    networkUploadBytesPerSecond: sample.network_upload_bytes_per_second,
+  }));
+
+  return insertChartGaps(points, HISTORY_CHART_GAP_THRESHOLD_MS);
 }
 
 export function formatChartAxisTime(timestamp: number): string {
@@ -66,12 +97,47 @@ export function formatChartTooltipTime(timestamp: number): string {
   });
 }
 
+export function formatHistoryAxisTime(
+  timestamp: number,
+  range: HistoricalRange,
+): string {
+  if (range === '7d') {
+    return new Date(timestamp).toLocaleDateString([], {
+      month: '2-digit',
+      day: '2-digit',
+    });
+  }
+
+  return formatChartAxisTime(timestamp);
+}
+
+export function formatHistoryTooltipTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 export function hasValidSeriesValues(
-  samples: RealtimeSample[],
-  key: keyof RealtimeSample,
+  samples: Array<RealtimeSample | ChartPoint>,
+  key: keyof ChartPoint,
 ): boolean {
   return samples.some((sample) => {
-    const value = sample[key];
+    const value = sample[key as keyof typeof sample];
     return typeof value === 'number' && !Number.isNaN(value);
   });
+}
+
+export function hasValidHistoricalTemperature(
+  samples: HistoricalMetricSample[],
+): boolean {
+  return samples.some(
+    (sample) =>
+      typeof sample.cpu_temperature_celsius === 'number' &&
+      !Number.isNaN(sample.cpu_temperature_celsius),
+  );
 }
