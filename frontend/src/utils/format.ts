@@ -26,6 +26,49 @@ export function formatUptime(seconds: number): string {
   return parts.join(' ');
 }
 
+/** Compact service uptime from uptime_seconds. Null stays unavailable (caller). */
+export function formatServiceUptime(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  if (minutes > 0) {
+    return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+  }
+  return `${secs}s`;
+}
+
+export function formatServiceSubState(subState: string | null): string | null {
+  if (!subState) {
+    return null;
+  }
+  const token = subState.trim().toLowerCase();
+  if (!token) {
+    return null;
+  }
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+
+export function formatLocalDateTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 export function formatPercent(value: number, decimals = 1): string {
   return `${value.toFixed(decimals)}%`;
 }

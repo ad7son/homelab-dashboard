@@ -1,4 +1,4 @@
-import { Server, Settings, X } from 'lucide-react';
+import { Boxes, Server, Settings, X } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 interface SidebarProps {
@@ -40,6 +40,7 @@ export function Sidebar({
           <p className="sidebar-section-label">Infrastructure</p>
           <NavLink
             to="/homelab"
+            end
             className={({ isActive }) =>
               isActive
                 ? 'sidebar-nav-link sidebar-nav-link-active'
@@ -49,6 +50,18 @@ export function Sidebar({
           >
             <Server size={18} aria-hidden="true" />
             <span>Home Lab</span>
+          </NavLink>
+          <NavLink
+            to="/homelab/services"
+            className={({ isActive }) =>
+              isActive
+                ? 'sidebar-nav-link sidebar-nav-link-active'
+                : 'sidebar-nav-link'
+            }
+            onClick={onCloseMobile}
+          >
+            <Boxes size={18} aria-hidden="true" />
+            <span>Services</span>
           </NavLink>
         </div>
 

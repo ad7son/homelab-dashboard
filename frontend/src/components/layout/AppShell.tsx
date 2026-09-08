@@ -11,6 +11,9 @@ function documentTitleForPath(pathname: string): string {
   if (pathname === '/settings') {
     return 'Settings · A7LAS';
   }
+  if (pathname === '/homelab/services') {
+    return 'Services · A7LAS';
+  }
   if (pathname === '/homelab' || pathname.startsWith('/homelab/')) {
     return 'Home Lab · A7LAS';
   }
