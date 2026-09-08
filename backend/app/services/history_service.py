@@ -16,6 +16,11 @@ from app.schemas.history import (
     HistoricalMetricsResponse,
     HistoryRange,
 )
+from app.services.history_aggregation import (
+    BUCKET_5_MIN_MS,
+    BUCKET_30_MIN_MS,
+    aggregate_metric_samples,
+)
 
 logger = logging.getLogger("a7las.history")
 
@@ -24,6 +29,14 @@ RANGE_DURATION_MS = {
     HistoryRange.H1: 60 * 60 * 1000,
     HistoryRange.H24: 24 * 60 * 60 * 1000,
     HistoryRange.D7: 7 * 24 * 60 * 60 * 1000,
+}
+
+# Query-time resolution: None means return raw samples.
+RANGE_AGGREGATION_BUCKET_MS: dict[HistoryRange, Optional[int]] = {
+    HistoryRange.M15: None,
+    HistoryRange.H1: None,
+    HistoryRange.H24: BUCKET_5_MIN_MS,
+    HistoryRange.D7: BUCKET_30_MIN_MS,
 }
 
 
@@ -42,7 +55,7 @@ def get_historical_metrics(
     Build a historical metrics response for the requested range.
 
     The window is anchored to current wall-clock time (or injected now_ms),
-    not to the newest database row.
+    not to the newest database row. Longer ranges are downsampled at query time.
     """
     end_timestamp_ms = _resolve_now_ms(now_ms=now_ms, clock_ms=clock_ms)
     start_timestamp_ms = end_timestamp_ms - RANGE_DURATION_MS[history_range]
@@ -61,6 +74,10 @@ def get_historical_metrics(
         raise HistoricalMetricsUnavailableError(
             "Historical metrics database unavailable"
         ) from exc
+
+    bucket_ms = RANGE_AGGREGATION_BUCKET_MS[history_range]
+    if bucket_ms is not None:
+        records = aggregate_metric_samples(records, bucket_ms)
 
     samples = [
         HistoricalMetricSample(

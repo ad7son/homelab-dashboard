@@ -26,8 +26,8 @@ export function HistoricalMonitoringCharts({
   samples,
 }: HistoricalMonitoringChartsProps) {
   const chartPoints = useMemo(
-    () => historicalSamplesToChartPoints(samples),
-    [samples],
+    () => historicalSamplesToChartPoints(samples, range),
+    [samples, range],
   );
   const temperatureAvailable = useMemo(
     () => hasValidHistoricalTemperature(samples),

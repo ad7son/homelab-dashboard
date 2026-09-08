@@ -20,6 +20,7 @@ from app.db.metrics_database import (
     DuplicateMetricSampleError,
     MetricSampleRecord,
     connect_metrics_database,
+    delete_metric_samples_before,
     insert_metric_sample,
     resolve_metrics_db_path,
 )
@@ -31,6 +32,8 @@ from app.services.memory_service import get_memory_info
 from app.services.network_service import get_network_info
 
 COLLECTION_INTERVAL_SECONDS = 30
+RAW_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+MAINTENANCE_INTERVAL_SECONDS = 60 * 60
 
 logger = logging.getLogger("a7las.metrics_collector")
 
@@ -38,6 +41,8 @@ CpuReader = Callable[[], CpuInfo]
 MemoryReader = Callable[[], MemoryInfo]
 NetworkReader = Callable[[], NetworkInfo]
 Clock = Callable[[], float]
+MonotonicClock = Callable[[], float]
+RetentionCleanup = Callable[[Path], Optional[int]]
 
 
 class CollectorLockError(RuntimeError):
@@ -129,24 +134,84 @@ def run_collect_iteration(
         connection.close()
 
 
+def run_retention_cleanup(
+    db_path: Path,
+    *,
+    clock: Clock = time.time,
+    retention_ms: int = RAW_RETENTION_MS,
+) -> int:
+    """
+    Delete raw samples older than the retention window.
+
+    Uses wall-clock time for the cutoff. Retention duration stays here,
+    not in the database layer.
+    """
+    cutoff_timestamp_ms = int(clock() * 1000) - int(retention_ms)
+    connection = connect_metrics_database(db_path)
+    try:
+        deleted = delete_metric_samples_before(connection, cutoff_timestamp_ms)
+    finally:
+        connection.close()
+
+    if deleted:
+        logger.info(
+            "Retention cleanup deleted %s sample(s) older than timestamp_ms=%s",
+            deleted,
+            cutoff_timestamp_ms,
+        )
+    else:
+        logger.debug(
+            "Retention cleanup found no samples older than timestamp_ms=%s",
+            cutoff_timestamp_ms,
+        )
+    return deleted
+
+
+def _safe_retention_cleanup(
+    db_path: Path,
+    *,
+    cleanup: RetentionCleanup,
+) -> None:
+    """Catch cleanup failures at the daemon boundary so collection continues."""
+    try:
+        cleanup(db_path)
+    except Exception:
+        logger.exception("Retention cleanup failed; continuing collection")
+
+
 def run_collector_loop(
     stop_event: threading.Event,
     *,
     db_path: Optional[Path] = None,
     interval_seconds: float = COLLECTION_INTERVAL_SECONDS,
+    maintenance_interval_seconds: float = MAINTENANCE_INTERVAL_SECONDS,
     cpu_reader: CpuReader = get_cpu_info,
     memory_reader: MemoryReader = get_memory_info,
     network_reader: NetworkReader = get_network_info,
     clock: Clock = time.time,
+    monotonic_clock: MonotonicClock = time.monotonic,
+    retention_cleanup: Optional[RetentionCleanup] = None,
 ) -> None:
     """
-    Collect immediately, then wait approximately interval_seconds between samples.
+    Run startup retention cleanup, collect immediately, then wait between samples.
 
+    Retention maintenance uses monotonic scheduling and runs about once per hour.
     Broad Exception handling is intentionally limited to this daemon boundary.
     """
     resolved_path = resolve_metrics_db_path(db_path)
+    cleanup = retention_cleanup or (
+        lambda path: run_retention_cleanup(path, clock=clock)
+    )
+
+    # Startup maintenance before the first collection.
+    _safe_retention_cleanup(resolved_path, cleanup=cleanup)
+    next_maintenance_at = monotonic_clock() + maintenance_interval_seconds
 
     while not stop_event.is_set():
+        if monotonic_clock() >= next_maintenance_at:
+            _safe_retention_cleanup(resolved_path, cleanup=cleanup)
+            next_maintenance_at = monotonic_clock() + maintenance_interval_seconds
+
         try:
             sample = run_collect_iteration(
                 resolved_path,
@@ -191,6 +256,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     logger.info("A7LAS metrics collector starting")
     logger.info("Resolved metrics database path: %s", db_path)
     logger.info("Collection interval: %s seconds", COLLECTION_INTERVAL_SECONDS)
+    logger.info(
+        "Raw retention: %s days; maintenance interval: %s seconds",
+        RAW_RETENTION_MS // (24 * 60 * 60 * 1000),
+        MAINTENANCE_INTERVAL_SECONDS,
+    )
 
     lock = CollectorProcessLock(db_path)
     try:

@@ -231,6 +231,24 @@ def read_metric_samples(
     return [_row_to_metric_sample(row) for row in rows]
 
 
+def delete_metric_samples_before(
+    connection: sqlite3.Connection,
+    cutoff_timestamp_ms: int,
+) -> int:
+    """
+    Delete samples strictly older than cutoff_timestamp_ms.
+
+    Retention duration belongs in the caller; this layer only applies the cutoff.
+    Rows at exactly the cutoff remain. Returns the number of deleted rows.
+    """
+    with connection:
+        cursor = connection.execute(
+            "DELETE FROM metric_samples WHERE timestamp_ms < ?",
+            (int(cutoff_timestamp_ms),),
+        )
+    return int(cursor.rowcount)
+
+
 def _row_to_metric_sample(row: sqlite3.Row) -> MetricSampleRecord:
     return MetricSampleRecord(
         timestamp_ms=int(row["timestamp_ms"]),

@@ -7,11 +7,14 @@ import pytest
 
 from app.collector.metrics_collector import (
     COLLECTION_INTERVAL_SECONDS,
+    MAINTENANCE_INTERVAL_SECONDS,
+    RAW_RETENTION_MS,
     CollectorLockError,
     CollectorProcessLock,
     collect_once,
     run_collect_iteration,
     run_collector_loop,
+    run_retention_cleanup,
 )
 from app.db.metrics_database import (
     DuplicateMetricSampleError,
@@ -64,6 +67,65 @@ def _network(
 
 def test_collection_interval_constant() -> None:
     assert COLLECTION_INTERVAL_SECONDS == 30
+    assert RAW_RETENTION_MS == 7 * 24 * 60 * 60 * 1000
+    assert MAINTENANCE_INTERVAL_SECONDS == 60 * 60
+
+
+def test_run_retention_cleanup_deletes_older_than_seven_days(tmp_path: Path) -> None:
+    db_path = tmp_path / "metrics.db"
+    now_seconds = 2_000_000_000.0
+    now_ms = int(now_seconds * 1000)
+    cutoff = now_ms - RAW_RETENTION_MS
+
+    connection = connect_metrics_database(db_path)
+    try:
+        insert_metric_sample(
+            connection,
+            MetricSampleRecord(
+                timestamp_ms=cutoff - 1,
+                cpu_usage_percent=1.0,
+                cpu_temperature_celsius=None,
+                memory_usage_percent=1.0,
+                network_download_bytes_per_second=None,
+                network_upload_bytes_per_second=None,
+            ),
+        )
+        insert_metric_sample(
+            connection,
+            MetricSampleRecord(
+                timestamp_ms=cutoff,
+                cpu_usage_percent=2.0,
+                cpu_temperature_celsius=None,
+                memory_usage_percent=2.0,
+                network_download_bytes_per_second=None,
+                network_upload_bytes_per_second=None,
+            ),
+        )
+        insert_metric_sample(
+            connection,
+            MetricSampleRecord(
+                timestamp_ms=now_ms,
+                cpu_usage_percent=3.0,
+                cpu_temperature_celsius=None,
+                memory_usage_percent=3.0,
+                network_download_bytes_per_second=None,
+                network_upload_bytes_per_second=None,
+            ),
+        )
+    finally:
+        connection.close()
+
+    deleted = run_retention_cleanup(db_path, clock=lambda: now_seconds)
+    assert deleted == 1
+
+    connection = connect_metrics_database(db_path)
+    try:
+        assert count_metric_samples(connection) == 2
+        assert fetch_metric_sample(connection, cutoff - 1) is None
+        assert fetch_metric_sample(connection, cutoff) is not None
+        assert fetch_metric_sample(connection, now_ms) is not None
+    finally:
+        connection.close()
 
 
 def test_collect_once_stores_one_row(tmp_path: Path) -> None:
@@ -133,7 +195,7 @@ def test_failed_iteration_does_not_prevent_later_success(tmp_path: Path) -> None
     db_path = tmp_path / "metrics.db"
     stop_event = Event()
     calls = {"n": 0}
-    timestamps = iter([1_700_000_040.0])
+    timestamps = iter([1_700_000_039.0, 1_700_000_040.0])
 
     def flaky_cpu() -> CpuInfo:
         calls["n"] += 1
@@ -146,10 +208,12 @@ def test_failed_iteration_does_not_prevent_later_success(tmp_path: Path) -> None
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
+        maintenance_interval_seconds=10_000,
         cpu_reader=flaky_cpu,
         memory_reader=lambda: _memory(),
         network_reader=lambda: _network(),
         clock=lambda: next(timestamps),
+        monotonic_clock=lambda: 0.0,
     )
 
     connection = connect_metrics_database(db_path)
@@ -237,5 +301,143 @@ def test_stop_event_exits_loop_without_full_interval(tmp_path: Path) -> None:
     connection = connect_metrics_database(db_path)
     try:
         assert count_metric_samples(connection) == 1
+    finally:
+        connection.close()
+
+
+def test_startup_maintenance_runs_before_collection(tmp_path: Path) -> None:
+    db_path = tmp_path / "metrics.db"
+    stop_event = Event()
+    cleanup_calls: list[Path] = []
+    collect_after_cleanup = {"ok": False}
+
+    def cleanup(path: Path) -> int:
+        cleanup_calls.append(path)
+        return 0
+
+    def cpu_reader() -> CpuInfo:
+        collect_after_cleanup["ok"] = len(cleanup_calls) >= 1
+        stop_event.set()
+        return _cpu()
+
+    run_collector_loop(
+        stop_event,
+        db_path=db_path,
+        interval_seconds=0.01,
+        maintenance_interval_seconds=10_000,
+        cpu_reader=cpu_reader,
+        memory_reader=lambda: _memory(),
+        network_reader=lambda: _network(),
+        clock=lambda: 1_700_000_070.0,
+        monotonic_clock=lambda: 0.0,
+        retention_cleanup=cleanup,
+    )
+
+    assert len(cleanup_calls) == 1
+    assert collect_after_cleanup["ok"] is True
+
+
+def test_maintenance_not_run_every_collection_iteration(tmp_path: Path) -> None:
+    db_path = tmp_path / "metrics.db"
+    stop_event = Event()
+    cleanup_calls = {"n": 0}
+    collections = {"n": 0}
+    timestamps = iter([1_700_000_080.0, 1_700_000_081.0, 1_700_000_082.0])
+
+    def cleanup(_path: Path) -> int:
+        cleanup_calls["n"] += 1
+        return 0
+
+    def cpu_reader() -> CpuInfo:
+        collections["n"] += 1
+        if collections["n"] >= 3:
+            stop_event.set()
+        return _cpu()
+
+    run_collector_loop(
+        stop_event,
+        db_path=db_path,
+        interval_seconds=0.01,
+        maintenance_interval_seconds=10_000,
+        cpu_reader=cpu_reader,
+        memory_reader=lambda: _memory(),
+        network_reader=lambda: _network(),
+        clock=lambda: next(timestamps),
+        monotonic_clock=lambda: 0.0,
+        retention_cleanup=cleanup,
+    )
+
+    assert collections["n"] == 3
+    assert cleanup_calls["n"] == 1
+
+
+def test_maintenance_runs_again_after_interval(tmp_path: Path) -> None:
+    db_path = tmp_path / "metrics.db"
+    stop_event = Event()
+    cleanup_calls = {"n": 0}
+    collections = {"n": 0}
+    mono = {"t": 0.0}
+    timestamps = iter([1_700_000_090.0, 1_700_000_091.0])
+
+    def cleanup(_path: Path) -> int:
+        cleanup_calls["n"] += 1
+        return 0
+
+    def cpu_reader() -> CpuInfo:
+        collections["n"] += 1
+        if collections["n"] == 1:
+            # After first collection wait, advance past maintenance interval.
+            mono["t"] = 100.0
+        else:
+            stop_event.set()
+        return _cpu()
+
+    run_collector_loop(
+        stop_event,
+        db_path=db_path,
+        interval_seconds=0.01,
+        maintenance_interval_seconds=50.0,
+        cpu_reader=cpu_reader,
+        memory_reader=lambda: _memory(),
+        network_reader=lambda: _network(),
+        clock=lambda: next(timestamps),
+        monotonic_clock=lambda: mono["t"],
+        retention_cleanup=cleanup,
+    )
+
+    assert collections["n"] == 2
+    assert cleanup_calls["n"] == 2
+
+
+def test_cleanup_failure_does_not_prevent_collection(tmp_path: Path) -> None:
+    db_path = tmp_path / "metrics.db"
+    stop_event = Event()
+
+    def cleanup(_path: Path) -> int:
+        raise RuntimeError("cleanup boom")
+
+    def cpu_reader() -> CpuInfo:
+        stop_event.set()
+        return _cpu(usage=44.0)
+
+    run_collector_loop(
+        stop_event,
+        db_path=db_path,
+        interval_seconds=0.01,
+        maintenance_interval_seconds=10_000,
+        cpu_reader=cpu_reader,
+        memory_reader=lambda: _memory(),
+        network_reader=lambda: _network(),
+        clock=lambda: 1_700_000_100.0,
+        monotonic_clock=lambda: 0.0,
+        retention_cleanup=cleanup,
+    )
+
+    connection = connect_metrics_database(db_path)
+    try:
+        assert count_metric_samples(connection) == 1
+        stored = fetch_metric_sample(connection, 1_700_000_100_000)
+        assert stored is not None
+        assert stored.cpu_usage_percent == 44.0
     finally:
         connection.close()

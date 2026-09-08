@@ -4,11 +4,30 @@ import type { RealtimeSample } from '../../types/realtime';
 /** Gap larger than ~2 polling intervals inserts a chart-only break. */
 export const REALTIME_CHART_GAP_THRESHOLD_MS = 7000;
 
-/** Gap larger than ~2 collector intervals for historical charts. */
+/** Gap larger than ~2 raw collector intervals (15m / 1h history). */
 export const HISTORY_CHART_GAP_THRESHOLD_MS = 65_000;
+
+/** Gap larger than ~2 five-minute aggregation buckets (24h history). */
+export const HISTORY_CHART_GAP_THRESHOLD_24H_MS = 11 * 60 * 1000;
+
+/** Gap larger than ~2 thirty-minute aggregation buckets (7d history). */
+export const HISTORY_CHART_GAP_THRESHOLD_7D_MS = 65 * 60 * 1000;
 
 /** @deprecated Use REALTIME_CHART_GAP_THRESHOLD_MS */
 export const CHART_GAP_THRESHOLD_MS = REALTIME_CHART_GAP_THRESHOLD_MS;
+
+export function historyChartGapThresholdMs(range: HistoricalRange): number {
+  switch (range) {
+    case '24h':
+      return HISTORY_CHART_GAP_THRESHOLD_24H_MS;
+    case '7d':
+      return HISTORY_CHART_GAP_THRESHOLD_7D_MS;
+    case '15m':
+    case '1h':
+    default:
+      return HISTORY_CHART_GAP_THRESHOLD_MS;
+  }
+}
 
 export interface ChartPoint {
   timestamp: number;
@@ -67,6 +86,7 @@ export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
 
 export function historicalSamplesToChartPoints(
   samples: HistoricalMetricSample[],
+  range: HistoricalRange,
 ): ChartPoint[] {
   const points = samples.map((sample) => ({
     timestamp: sample.timestamp_ms,
@@ -77,7 +97,7 @@ export function historicalSamplesToChartPoints(
     networkUploadBytesPerSecond: sample.network_upload_bytes_per_second,
   }));
 
-  return insertChartGaps(points, HISTORY_CHART_GAP_THRESHOLD_MS);
+  return insertChartGaps(points, historyChartGapThresholdMs(range));
 }
 
 export function formatChartAxisTime(timestamp: number): string {
