@@ -1,0 +1,2 @@
+# Project Showcase uses FastAPI and Pydantic from the shared backend environment.
+# Install that environment with backend/requirements.txt. This module has no extra packages.

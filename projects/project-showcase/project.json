@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "project-showcase",
+  "name": "Project Showcase",
+  "description": "A demonstration module for the modular project platform.",
+  "pythonPackage": "project_showcase",
+  "routeBase": "/project-showcase",
+  "apiPrefix": "/api/project-showcase",
+  "enabled": true,
+  "nav": {
+    "section": "Projects",
+    "order": 20,
+    "items": [
+      {
+        "path": "",
+        "label": "Showcase",
+        "icon": "folder",
+        "end": true,
+        "documentTitle": "Project Showcase"
+      }
+    ]
+  }
+}

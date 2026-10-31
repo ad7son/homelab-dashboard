@@ -7,9 +7,9 @@ RequiresMountsFor=/srv
 Type=simple
 User=adson
 Group=adson
-WorkingDirectory=/srv/homelab-dashboard/backend
+WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
 Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/metrics.db
-ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m app.collector.metrics_collector
+ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m system_monitor.collector.metrics_collector
 Restart=on-failure
 RestartSec=5
 

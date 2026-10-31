@@ -165,20 +165,133 @@ Frontend validation lives in `loadProjects()` and uses the same field rules. Ico
 
 ## 8. Adding a New Project
 
-1. Create `projects/{project-id}/project.json` using schema version 1.
-2. Add `frontend/index.tsx` that default-exports `{ routes }`.
-3. Add `backend/{pythonPackage}/plugin.py` with `build_router()`.
-4. Restart the Vite dev server and Uvicorn. Discovery is build-time on the frontend and startup-time on the backend. It is not hot-plug.
+A new project is a folder under `projects/`. It is not a second Vite app, React root, FastAPI application, or virtual environment.
 
-Do not edit `Sidebar.tsx`, `frontend/src/router/router.tsx`, or `backend/app/main.py` to register that project. Those files read the manifest and mount whatever `projects/` contains.
+Minimum layout:
+
+```text
+projects/my-project/
+  project.json
+  frontend/index.tsx
+  backend/my_project/plugin.py
+```
+
+`project.json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my-project",
+  "name": "My Project",
+  "description": "Short description shown by the project.",
+  "pythonPackage": "my_project",
+  "routeBase": "/my-project",
+  "apiPrefix": "/api/my-project",
+  "enabled": true,
+  "nav": {
+    "section": "Projects",
+    "order": 30,
+    "items": [
+      {
+        "path": "",
+        "label": "Overview",
+        "icon": "folder",
+        "end": true,
+        "documentTitle": "My Project"
+      }
+    ]
+  }
+}
+```
+
+`frontend/index.tsx`:
+
+```tsx
+import type { ProjectFrontendModule } from '@shell/modules/types'
+
+const myProjectModule: ProjectFrontendModule = {
+  routes: [{ index: true, element: <p>My Project</p> }],
+}
+
+export default myProjectModule
+```
+
+`backend/my_project/plugin.py`:
+
+```python
+from fastapi import APIRouter
+
+def build_router() -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/info")
+    def read_info() -> dict[str, str]:
+        return {"id": "my-project", "status": "ok"}
+
+    return router
+```
+
+That plugin route is mounted at `GET /api/my-project/info`. The `/api/my-project` prefix comes from `apiPrefix`. Do not put the prefix inside `build_router()`.
+
+Do not edit `Sidebar.tsx`, `frontend/src/router/router.tsx`, or `backend/app/main.py` to register the project. Those files already discover every valid folder under `projects/`.
+
+### Required fields
+
+`schemaVersion`, `id`, `name`, `pythonPackage`, `routeBase`, `apiPrefix`, and `nav` are required. `description` defaults to `""`. `enabled` defaults to `true`. `legacyRouteBases` and `legacyApiPrefix` are optional and are not part of a new project. `/api` as a legacy prefix is reserved for `system-monitor`.
+
+### Naming
+
+- Directory name and `id`: lowercase kebab-case, for example `my-project`.
+- `pythonPackage`: a Python identifier such as `my_project`. It cannot contain hyphens and cannot be a keyword.
+- `routeBase`: absolute kebab-case, for example `/my-project`. The shell owns `/` and `/settings`.
+- `apiPrefix`: starts with `/api/` and is not `/api` or `/api/health`.
+- Nav `path`: relative to `routeBase`. Use `""` for the index page and `reports` for `/my-project/reports`.
+
+### Navigation and icons
+
+`nav.section` groups sidebar links. `nav.order` sorts sections. `nav.items` needs at least one item, and paths inside one manifest must be unique. `icon` must be one of `activity`, `bot`, `boxes`, `database`, `folder`, `layout-dashboard`, `server`. The shell maps those names in `frontend/src/modules/icons.ts`. Adding an icon means updating that registry and the matching backend allowlist together.
+
+`end: true` marks an exact NavLink match, which is appropriate for the index item. `documentTitle` sets the browser title for that item.
+
+### Dependencies
+
+Use the shared virtual environment at `backend/.venv`. Platform packages live in `backend/requirements.txt`. A project that needs extra packages lists them in `projects/{project-id}/backend/requirements.txt` and they are installed into the same environment. Project Showcase has no extra packages. System Monitor adds `psutil`.
+
+Frontend code under `projects/` imports React through the aliases in `frontend/vite.config.ts` and `frontend/tsconfig.app.json`. Do not add a second `package.json` or `node_modules` inside a project. Shared layout components are imported from `@shell/...`.
+
+### Restart and rebuild
+
+Putting a folder in `projects/` does not attach it to an already running process. Vite discovers `project.json` and `frontend/index.tsx` when the dev server starts or when a production build runs. FastAPI discovers plugins when Uvicorn starts. After adding or changing a module:
+
+1. Install any new Python requirements into `backend/.venv`.
+2. Restart Uvicorn.
+3. Restart `npm run dev`, or run `npm run build` for a production bundle.
+
+This is not a hot-plug system. A running server does not pick up a new folder until it is restarted, and a production bundle does not include it until it is rebuilt.
+
+### Errors
+
+- An invalid manifest, a missing `frontend/index.tsx`, a missing plugin, a failed import, or a plugin that does not return an `APIRouter` fails that load and names the project. The backend refuses to finish startup. The frontend shell shows the discovery error and keeps Settings available.
+- `enabled: false` is validated and then omitted from routes, navigation, and API registration.
+- One project page that throws at runtime is caught by the shell's per-page error boundary. The sidebar and the other project stay available.
+- Local plugins are trusted source in this repository. The loader does not claim to sandbox arbitrary third-party code.
+
+### Validation rules
+
+Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, `pythonPackage`, or a final `HTTP method + path`. `id` must equal the directory name, so two folders cannot claim the same id. Duplicate route bases and API prefixes are rejected. A plugin path that escapes its prefix, including a path that would cover `GET /api/health`, is rejected. If one project in the batch fails, none of that batch is mounted.
 
 ## 9. Current Development Status
 
-Home Lab monitoring is the `system-monitor` project. The shell and `backend/app/main.py` load it through the module contract.
+Two modules are registered from `projects/`:
 
-- `/system-monitor` and `/system-monitor/services` are the current pages. `/homelab` and `/homelab/services` redirect there because `legacyRouteBases` contains `/homelab`.
-- Monitoring APIs are mounted at `/api/system-monitor/...` and, for this project only, at the previous `/api/...` paths. `GET /api/health` stays on the platform.
-- The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. The schema is unchanged.
-- Linux `fcntl.flock` is imported only when the collector takes its process lock. The lock test is skipped on Windows. The collector implementation was not replaced with a Windows lock.
-- `deploy/systemd/a7las-metrics-collector.service` still starts `python -m app.collector.metrics_collector`. That unit is intentionally unchanged in this commit and will not match the moved module until a later deployment update.
+- `system-monitor` — Home Lab at `/system-monitor` and Services at `/system-monitor/services`. `/homelab` and `/homelab/services` redirect there because `legacyRouteBases` contains `/homelab`. Monitoring APIs are mounted at `/api/system-monitor/...` and, for this project only, at the previous `/api/...` paths.
+- `project-showcase` — one page at `/project-showcase` and `GET /api/project-showcase/info`. It has no legacy aliases.
+
+`GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
+
+The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. The schema and the 7-day raw retention window are unchanged. The collector samples every 30 seconds.
+
+Linux `fcntl.flock` is imported only when the collector takes its process lock. The lock test is skipped on Windows. The collector implementation was not replaced with a Windows lock.
+
+`deploy/systemd/a7las-metrics-collector.service` in this repository now uses working directory `/srv/homelab-dashboard/projects/system-monitor/backend` and starts `/srv/homelab-dashboard/backend/.venv/bin/python -m system_monitor.collector.metrics_collector`. Those paths follow the unit file that was already in the repository. Editing the unit file does not reload a live server. A Linux administrator still has to copy the unit and run `systemctl daemon-reload` before restarting the service.
 
