@@ -27,6 +27,7 @@ class LoadedProjectRouter:
     manifest: ProjectManifest
     project_dir: Path
     router: APIRouter
+    mount_prefix: str
 
 
 @dataclass
@@ -116,8 +117,18 @@ def register_project_routers(
                     manifest=manifest,
                     project_dir=project_dir,
                     router=router,
+                    mount_prefix=manifest.api_prefix,
                 )
             )
+            if manifest.legacy_api_prefix is not None:
+                loaded.append(
+                    LoadedProjectRouter(
+                        manifest=manifest,
+                        project_dir=project_dir,
+                        router=_build_additional_router(manifest),
+                        mount_prefix=manifest.legacy_api_prefix,
+                    )
+                )
         _reject_duplicate_http_routes(app, loaded)
     except Exception:
         session.rollback()
@@ -126,14 +137,14 @@ def register_project_routers(
     snapshot = list(app.router.routes)
     try:
         for item in loaded:
-            app.include_router(item.router, prefix=item.manifest.api_prefix)
+            app.include_router(item.router, prefix=item.mount_prefix)
     except Exception as exc:
         app.router.routes[:] = snapshot
         session.rollback()
         raise ProjectModuleError(
             f"failed while mounting project routers: {exc}"
         ) from exc
-    return [item.manifest for item in loaded]
+    return manifests
 
 
 def _project_directories(projects_root: Path) -> Iterator[Path]:
@@ -152,9 +163,20 @@ def _reject_duplicate_fields(manifests: list[ProjectManifest]) -> None:
         _remember_unique(
             seen_routes, manifest.route_base, manifest.id, "routeBase"
         )
+        for legacy_route in manifest.legacy_route_bases:
+            _remember_unique(
+                seen_routes, legacy_route, manifest.id, "legacyRouteBases"
+            )
         _remember_unique(
             seen_prefixes, manifest.api_prefix, manifest.id, "apiPrefix"
         )
+        if manifest.legacy_api_prefix is not None:
+            _remember_unique(
+                seen_prefixes,
+                manifest.legacy_api_prefix,
+                manifest.id,
+                "legacyApiPrefix",
+            )
         _remember_unique(
             seen_packages,
             manifest.python_package,
@@ -242,6 +264,31 @@ def _import_build_router(
     return router
 
 
+def _build_additional_router(manifest: ProjectManifest) -> APIRouter:
+    """Call build_router() again so a legacy prefix gets its own parent router."""
+    module = sys.modules.get(f"{manifest.python_package}.plugin")
+    if module is None:
+        raise ProjectModuleError(
+            f"project '{manifest.id}': plugin was not imported before the legacy mount"
+        )
+    build_router = getattr(module, "build_router", None)
+    if not callable(build_router):
+        raise ProjectModuleError(
+            f"project '{manifest.id}': {manifest.python_package}.plugin must define build_router()"
+        )
+    try:
+        router = build_router()
+    except Exception as exc:
+        raise ProjectModuleError(
+            f"project '{manifest.id}': build_router() failed ({exc})"
+        ) from exc
+    if not isinstance(router, APIRouter):
+        raise ProjectModuleError(
+            f"project '{manifest.id}': build_router() must return an APIRouter"
+        )
+    return router
+
+
 def _reject_duplicate_http_routes(
     app: FastAPI,
     loaded: list[LoadedProjectRouter],
@@ -268,7 +315,7 @@ def _iter_existing_route_keys(app: FastAPI) -> Iterator[tuple[str, str]]:
 def _iter_plugin_route_keys(item: LoadedProjectRouter) -> Iterator[tuple[str, str]]:
     yield from _iter_route_keys(
         item.router,
-        prefix=item.manifest.api_prefix,
+        prefix=item.mount_prefix,
         project_id=item.manifest.id,
     )
 

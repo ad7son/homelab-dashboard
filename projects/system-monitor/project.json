@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "system-monitor",
+  "name": "Home Lab",
+  "description": "Real-time system monitoring dashboard",
+  "pythonPackage": "system_monitor",
+  "routeBase": "/system-monitor",
+  "apiPrefix": "/api/system-monitor",
+  "legacyRouteBases": ["/homelab"],
+  "legacyApiPrefix": "/api",
+  "enabled": true,
+  "nav": {
+    "section": "Infrastructure",
+    "order": 10,
+    "items": [
+      {
+        "path": "",
+        "label": "Home Lab",
+        "icon": "server",
+        "end": true,
+        "documentTitle": "Home Lab"
+      },
+      {
+        "path": "services",
+        "label": "Services",
+        "icon": "boxes",
+        "documentTitle": "Services"
+      }
+    ]
+  }
+}

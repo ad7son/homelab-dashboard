@@ -15,9 +15,26 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     resolve: {
-      alias: {
-        '@shell': path.resolve(frontendDir, 'src'),
-      },
+      alias: [
+        { find: '@shell', replacement: path.resolve(frontendDir, 'src') },
+        {
+          find: 'react-dom',
+          replacement: path.resolve(frontendDir, 'node_modules/react-dom'),
+        },
+        {
+          find: 'react-router-dom',
+          replacement: path.resolve(frontendDir, 'node_modules/react-router-dom'),
+        },
+        { find: 'react', replacement: path.resolve(frontendDir, 'node_modules/react') },
+        {
+          find: 'lucide-react',
+          replacement: path.resolve(frontendDir, 'node_modules/lucide-react'),
+        },
+        {
+          find: 'recharts',
+          replacement: path.resolve(frontendDir, 'node_modules/recharts'),
+        },
+      ],
     },
     server: {
       // projects/ lives outside frontend/, so the dev server must be allowed

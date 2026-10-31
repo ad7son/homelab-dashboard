@@ -35,6 +35,21 @@ const NAV_PATH_PATTERN =
 
 const RESERVED_ROUTE_BASES = ['/settings']
 const RESERVED_API_PREFIXES = ['/api/health']
+const LEGACY_API_ROOT = '/api'
+const LEGACY_API_ROOT_PROJECT_ID = 'system-monitor'
+const MANIFEST_FIELDS = new Set([
+  'schemaVersion',
+  'id',
+  'name',
+  'description',
+  'pythonPackage',
+  'routeBase',
+  'apiPrefix',
+  'legacyRouteBases',
+  'legacyApiPrefix',
+  'enabled',
+  'nav',
+])
 
 const PYTHON_KEYWORDS = new Set([
   'false',
@@ -85,10 +100,15 @@ interface FrontendLoader {
   (this: void): Promise<unknown>
 }
 
+export interface ProjectDiscoveryResult {
+  projects: DiscoveredProject[]
+  error: string | null
+}
+
 /**
  * Read manifests from projects/{id}/project.json.
  * Enabled projects are returned in nav.order, then id order.
- * This function does not register React Router routes.
+ * The shell turns the result into routes. This function does not mount them.
  */
 export function loadProjects(): DiscoveredProject[] {
   const frontendById = indexFrontendLoaders(frontendModules)
@@ -143,6 +163,19 @@ export function loadProjects(): DiscoveredProject[] {
         load().then((imported) => unwrapFrontendModule(imported, manifest.id)),
     }
   })
+}
+
+/** Load projects for the shell. A discovery failure is reported, not hidden. */
+export function loadDiscoveredProjects(): ProjectDiscoveryResult {
+  try {
+    return { projects: loadProjects(), error: null }
+  } catch (error) {
+    console.error(error)
+    return {
+      projects: [],
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
 }
 
 /** Group enabled projects into sidebar sections. Does not render navigation. */
@@ -220,6 +253,10 @@ function validateManifest(
     )
   }
   const record = raw as Record<string, unknown>
+  const unknownField = Object.keys(record).find((key) => !MANIFEST_FIELDS.has(key))
+  if (unknownField != null) {
+    throw new ProjectModuleError(`${source}: unknown manifest field '${unknownField}'`)
+  }
   const schemaVersion = record.schemaVersion
   if (typeof schemaVersion !== 'number' || !Number.isInteger(schemaVersion)) {
     throw new ProjectModuleError(`${source}: schemaVersion must be the integer 1`)
@@ -251,9 +288,17 @@ function validateManifest(
     )
   }
   const routeBase = requiredString(record.routeBase, source, 'routeBase')
-  validateRouteBase(routeBase, source)
+  validatePublicRoute(routeBase, source, 'routeBase')
   const apiPrefix = requiredString(record.apiPrefix, source, 'apiPrefix')
-  validateApiPrefix(apiPrefix, source)
+  validateApiPrefix(apiPrefix, source, 'apiPrefix')
+  const legacyRouteBases = validateLegacyRouteBases(record.legacyRouteBases, source)
+  const legacyApiPrefix = validateLegacyApiPrefix(
+    record.legacyApiPrefix,
+    id,
+    apiPrefix,
+    source,
+  )
+  assertNoRouteOverlap(routeBase, legacyRouteBases, source)
   const enabled = record.enabled == null ? true : record.enabled
   if (typeof enabled !== 'boolean') {
     throw new ProjectModuleError(`${source}: enabled must be a boolean`)
@@ -267,41 +312,108 @@ function validateManifest(
     pythonPackage,
     routeBase,
     apiPrefix,
+    legacyRouteBases,
+    legacyApiPrefix,
     enabled,
     nav,
   }
 }
 
-function validateRouteBase(routeBase: string, source: string): void {
+function validatePublicRoute(route: string, source: string, fieldName: string): void {
   if (
-    containsUnsafePath(routeBase) ||
-    routeBase === '/' ||
-    isReservedPath(routeBase, RESERVED_ROUTE_BASES) ||
-    !ROUTE_BASE_PATTERN.test(routeBase)
+    containsUnsafePath(route) ||
+    route === '/' ||
+    isReservedPath(route, RESERVED_ROUTE_BASES) ||
+    !ROUTE_BASE_PATTERN.test(route)
   ) {
     throw new ProjectModuleError(
-      `${source}: routeBase must be an absolute kebab-case path such as ` +
+      `${source}: ${fieldName} must be an absolute kebab-case path such as ` +
         "'/system-monitor' and cannot be '/' or '/settings'",
     )
   }
 }
 
-function validateApiPrefix(apiPrefix: string, source: string): void {
+function validateApiPrefix(apiPrefix: string, source: string, fieldName: string): void {
   if (apiPrefix === '/api' || apiPrefix === '/api/') {
     throw new ProjectModuleError(
-      `${source}: apiPrefix must name a project namespace and cannot be '/api'`,
+      `${source}: ${fieldName} must name a project namespace and cannot be '/api'`,
     )
   }
   if (isReservedPath(apiPrefix, RESERVED_API_PREFIXES)) {
     throw new ProjectModuleError(
-      `${source}: apiPrefix '/api/health' is reserved by the platform`,
+      `${source}: ${fieldName} '/api/health' is reserved by the platform`,
     )
   }
   if (containsUnsafePath(apiPrefix) || !API_PREFIX_PATTERN.test(apiPrefix)) {
     throw new ProjectModuleError(
-      `${source}: apiPrefix must start with '/api/' and use kebab-case segments ` +
+      `${source}: ${fieldName} must start with '/api/' and use kebab-case segments ` +
         "such as '/api/system-monitor'",
     )
+  }
+}
+
+function validateLegacyRouteBases(raw: unknown, source: string): string[] {
+  if (raw == null) return []
+  if (!Array.isArray(raw)) {
+    throw new ProjectModuleError(`${source}: legacyRouteBases must be an array of absolute paths`)
+  }
+  const routes = raw.map((item) => {
+    if (typeof item !== 'string') {
+      throw new ProjectModuleError(`${source}: legacyRouteBases must contain only strings`)
+    }
+    validatePublicRoute(item, source, 'legacyRouteBases')
+    return item
+  })
+  if (new Set(routes).size !== routes.length) {
+    throw new ProjectModuleError(`${source}: legacyRouteBases must not contain duplicate paths`)
+  }
+  return routes
+}
+
+function validateLegacyApiPrefix(
+  raw: unknown,
+  projectId: string,
+  apiPrefix: string,
+  source: string,
+): string | null {
+  if (raw == null) return null
+  if (typeof raw !== 'string') {
+    throw new ProjectModuleError(`${source}: legacyApiPrefix must be a string`)
+  }
+  if (raw === apiPrefix) {
+    throw new ProjectModuleError(`${source}: legacyApiPrefix must differ from apiPrefix`)
+  }
+  if (raw === LEGACY_API_ROOT) {
+    if (projectId !== LEGACY_API_ROOT_PROJECT_ID) {
+      throw new ProjectModuleError(
+        `${source}: legacyApiPrefix '/api' is reserved for project 'system-monitor'`,
+      )
+    }
+    return raw
+  }
+  validateApiPrefix(raw, source, 'legacyApiPrefix')
+  return raw
+}
+
+function assertNoRouteOverlap(
+  routeBase: string,
+  legacyRouteBases: readonly string[],
+  source: string,
+): void {
+  const labeled: Array<[string, string]> = [['routeBase', routeBase]]
+  for (const legacy of legacyRouteBases) {
+    labeled.push(['legacyRouteBases', legacy])
+  }
+  for (let index = 0; index < labeled.length; index += 1) {
+    for (let other = index + 1; other < labeled.length; other += 1) {
+      const [leftField, left] = labeled[index]
+      const [rightField, right] = labeled[other]
+      if (left === right || left.startsWith(`${right}/`) || right.startsWith(`${left}/`)) {
+        throw new ProjectModuleError(
+          `${source}: ${leftField} '${left}' overlaps ${rightField} '${right}'`,
+        )
+      }
+    }
   }
 }
 
@@ -369,28 +481,37 @@ function validateNav(raw: unknown, source: string): ProjectManifest['nav'] {
 }
 
 function rejectDuplicates(manifests: readonly ProjectManifest[]): void {
-  rememberUnique(manifests, (manifest) => manifest.id, 'id')
-  rememberUnique(manifests, (manifest) => manifest.routeBase, 'routeBase')
-  rememberUnique(manifests, (manifest) => manifest.apiPrefix, 'apiPrefix')
-  rememberUnique(manifests, (manifest) => manifest.pythonPackage, 'pythonPackage')
+  const ids = new Map<string, string>()
+  const routes = new Map<string, string>()
+  const prefixes = new Map<string, string>()
+  const packages = new Map<string, string>()
+  for (const manifest of manifests) {
+    claim(ids, manifest.id, manifest.id, 'id')
+    claim(routes, manifest.routeBase, manifest.id, 'routeBase')
+    for (const legacyRoute of manifest.legacyRouteBases) {
+      claim(routes, legacyRoute, manifest.id, 'legacyRouteBases')
+    }
+    claim(prefixes, manifest.apiPrefix, manifest.id, 'apiPrefix')
+    if (manifest.legacyApiPrefix != null) {
+      claim(prefixes, manifest.legacyApiPrefix, manifest.id, 'legacyApiPrefix')
+    }
+    claim(packages, manifest.pythonPackage, manifest.id, 'pythonPackage')
+  }
 }
 
-function rememberUnique(
-  manifests: readonly ProjectManifest[],
-  select: (manifest: ProjectManifest) => string,
+function claim(
+  seen: Map<string, string>,
+  value: string,
+  projectId: string,
   fieldName: string,
 ): void {
-  const seen = new Map<string, string>()
-  for (const manifest of manifests) {
-    const value = select(manifest)
-    const previous = seen.get(value)
-    if (previous != null) {
-      throw new ProjectModuleError(
-        `duplicate ${fieldName} '${value}' used by projects '${previous}' and '${manifest.id}'`,
-      )
-    }
-    seen.set(value, manifest.id)
+  const previous = seen.get(value)
+  if (previous != null) {
+    throw new ProjectModuleError(
+      `duplicate ${fieldName} '${value}' used by projects '${previous}' and '${projectId}'`,
+    )
   }
+  seen.set(value, projectId)
 }
 
 function unwrapFrontendModule(

@@ -1,16 +1,9 @@
-"""A7LAS configuration package.
+"""Platform configuration.
 
-Central, deployment-oriented settings that are not request/response schemas.
+Project-specific settings, including monitored systemd units, live in the
+owning project package.
 """
 
-from app.config.monitored_services import (
-    MONITORED_SERVICES,
-    MonitoredServiceConfig,
-)
 from app.config.version import A7LAS_VERSION
 
-__all__ = [
-    "A7LAS_VERSION",
-    "MONITORED_SERVICES",
-    "MonitoredServiceConfig",
-]
+__all__ = ["A7LAS_VERSION"]

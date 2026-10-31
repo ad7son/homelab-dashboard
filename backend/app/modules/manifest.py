@@ -12,6 +12,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -34,6 +35,11 @@ RESERVED_ROUTE_BASES = frozenset({"/settings"})
 # Platform endpoints that must stay outside every project apiPrefix.
 RESERVED_API_PREFIXES = frozenset({"/api/health"})
 
+# The pre-modular dashboard served monitoring at /api. Only system-monitor
+# may keep that prefix. Other projects must use a namespaced /api/{id} prefix.
+LEGACY_API_ROOT = "/api"
+LEGACY_API_ROOT_PROJECT_ID = "system-monitor"
+
 _ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _PACKAGE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _ROUTE_BASE_PATTERN = re.compile(
@@ -51,6 +57,8 @@ _FIELD_NAMES = {
     "python_package": "pythonPackage",
     "route_base": "routeBase",
     "api_prefix": "apiPrefix",
+    "legacy_route_bases": "legacyRouteBases",
+    "legacy_api_prefix": "legacyApiPrefix",
     "document_title": "documentTitle",
 }
 
@@ -154,6 +162,11 @@ class ProjectManifest(BaseModel):
     python_package: str = Field(alias="pythonPackage")
     route_base: str = Field(alias="routeBase")
     api_prefix: str = Field(alias="apiPrefix")
+    legacy_route_bases: list[str] = Field(
+        default_factory=list,
+        alias="legacyRouteBases",
+    )
+    legacy_api_prefix: str | None = Field(default=None, alias="legacyApiPrefix")
     enabled: bool = True
     nav: ProjectNav
 
@@ -204,38 +217,43 @@ class ProjectManifest(BaseModel):
     @field_validator("route_base")
     @classmethod
     def validate_route_base(cls, value: object) -> str:
-        if not isinstance(value, str) or _contains_unsafe_path_text(value):
-            raise ValueError(
-                "must be an absolute kebab-case path such as '/system-monitor'"
-            )
-        if value == "/" or _is_reserved_path(value, RESERVED_ROUTE_BASES):
-            raise ValueError(
-                "is reserved by the platform shell; '/' and '/settings' cannot be used"
-            )
-        if _ROUTE_BASE_PATTERN.fullmatch(value) is None:
-            raise ValueError(
-                "must be an absolute kebab-case path such as '/system-monitor'"
-            )
-        return value
+        return _validate_public_route(value)
 
     @field_validator("api_prefix")
     @classmethod
     def validate_api_prefix(cls, value: object) -> str:
-        if not isinstance(value, str) or _contains_unsafe_path_text(value):
-            raise ValueError(
-                "must start with '/api/' and name a project namespace "
-                "such as '/api/system-monitor'"
-            )
-        if value == "/api" or value == "/api/":
-            raise ValueError("must name a project namespace and cannot be '/api'")
-        if _is_reserved_path(value, RESERVED_API_PREFIXES):
-            raise ValueError("'/api/health' is reserved by the platform")
-        if _API_PREFIX_PATTERN.fullmatch(value) is None:
-            raise ValueError(
-                "must start with '/api/' and use kebab-case segments "
-                "such as '/api/system-monitor'"
-            )
-        return value
+        return _validate_namespaced_api_prefix(value)
+
+    @field_validator("legacy_route_bases")
+    @classmethod
+    def validate_legacy_route_bases(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            raise ValueError("must be an array of absolute paths")
+        cleaned = [_validate_public_route(item) for item in value]
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("must not contain duplicate paths")
+        return cleaned
+
+    @field_validator("legacy_api_prefix")
+    @classmethod
+    def validate_legacy_api_prefix(
+        cls,
+        value: object,
+        info: ValidationInfo,
+    ) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("must be a string")
+        if value == info.data.get("api_prefix"):
+            raise ValueError("must differ from apiPrefix")
+        if value == LEGACY_API_ROOT:
+            if info.data.get("id") != LEGACY_API_ROOT_PROJECT_ID:
+                raise ValueError(
+                    "only project 'system-monitor' may set legacyApiPrefix to '/api'"
+                )
+            return value
+        return _validate_namespaced_api_prefix(value)
 
     @field_validator("enabled")
     @classmethod
@@ -263,6 +281,7 @@ def load_project_manifest(project_dir: Path) -> ProjectManifest:
             f"{manifest_path}: id '{manifest.id}' does not match "
             f"project directory name '{project_dir.name}'"
         )
+    _reject_overlapping_routes(manifest, manifest_path)
     return manifest
 
 
@@ -315,6 +334,52 @@ def _contains_unsafe_path_text(value: str) -> bool:
     if "\\" in value or "\x00" in value or "%" in value:
         return True
     return any(segment in {".", ".."} for segment in value.split("/"))
+
+
+def _validate_public_route(value: object) -> str:
+    if not isinstance(value, str) or _contains_unsafe_path_text(value):
+        raise ValueError(
+            "must be an absolute kebab-case path such as '/system-monitor'"
+        )
+    if value == "/" or _is_reserved_path(value, RESERVED_ROUTE_BASES):
+        raise ValueError(
+            "is reserved by the platform shell; '/' and '/settings' cannot be used"
+        )
+    if _ROUTE_BASE_PATTERN.fullmatch(value) is None:
+        raise ValueError(
+            "must be an absolute kebab-case path such as '/system-monitor'"
+        )
+    return value
+
+
+def _validate_namespaced_api_prefix(value: object) -> str:
+    if not isinstance(value, str) or _contains_unsafe_path_text(value):
+        raise ValueError(
+            "must start with '/api/' and name a project namespace "
+            "such as '/api/system-monitor'"
+        )
+    if value == "/api" or value == "/api/":
+        raise ValueError("must name a project namespace and cannot be '/api'")
+    if _is_reserved_path(value, RESERVED_API_PREFIXES):
+        raise ValueError("'/api/health' is reserved by the platform")
+    if _API_PREFIX_PATTERN.fullmatch(value) is None:
+        raise ValueError(
+            "must start with '/api/' and use kebab-case segments "
+            "such as '/api/system-monitor'"
+        )
+    return value
+
+
+def _reject_overlapping_routes(manifest: ProjectManifest, manifest_path: Path) -> None:
+    labeled = [("routeBase", manifest.route_base)]
+    labeled.extend(("legacyRouteBases", item) for item in manifest.legacy_route_bases)
+    for index, (left_field, left) in enumerate(labeled):
+        for right_field, right in labeled[index + 1 :]:
+            if left == right or left.startswith(right + "/") or right.startswith(left + "/"):
+                raise ProjectModuleError(
+                    f"{manifest_path}: invalid project manifest "
+                    f"({left_field} '{left}' overlaps {right_field} '{right}')"
+                )
 
 
 def _is_reserved_path(value: str, reserved: frozenset[str]) -> bool:

@@ -1,24 +1,38 @@
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import cpu, disk, health, history, memory, network, overview, services, system
+from app.api import health
+from app.modules.loader import default_projects_root, register_project_routers
+from app.modules.manifest import ProjectModuleError
 
-app = FastAPI(title="Home Lab Dashboard API")
+logger = logging.getLogger("a7las")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
 
-app.include_router(overview.router, prefix="/api", tags=["overview"])
-app.include_router(system.router, prefix="/api", tags=["system"])
-app.include_router(cpu.router, prefix="/api", tags=["cpu"])
-app.include_router(memory.router, prefix="/api", tags=["memory"])
-app.include_router(disk.router, prefix="/api", tags=["disk"])
-app.include_router(network.router, prefix="/api", tags=["network"])
-app.include_router(history.router, prefix="/api", tags=["history"])
-app.include_router(services.router, prefix="/api", tags=["services"])
-app.include_router(health.router, prefix="/api", tags=["health"])
+def create_app(projects_root: Path | None = None) -> FastAPI:
+    """Create the platform app and mount every enabled project.
+
+    An invalid enabled project raises ``ProjectModuleError`` before this
+    function returns. The raised error names the manifest or plugin problem.
+    """
+    application = FastAPI(title="Home Lab Dashboard API")
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+    application.include_router(health.router, prefix="/api", tags=["health"])
+    root = default_projects_root() if projects_root is None else Path(projects_root)
+    try:
+        register_project_routers(application, root)
+    except ProjectModuleError:
+        logger.exception("Refusing to start because a project module failed to load")
+        raise
+    return application
+
+
+app = create_app()

@@ -7,7 +7,7 @@ export function NotFoundPage() {
     <PageContainer>
       <PageHeader title="Page not found" />
       <p>
-        <Link to="/homelab">Back to Home Lab</Link>
+        <Link to="/">Back to home</Link>
       </p>
     </PageContainer>
   );

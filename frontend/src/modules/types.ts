@@ -27,6 +27,8 @@ export interface ProjectManifest {
   pythonPackage: string
   routeBase: string
   apiPrefix: string
+  legacyRouteBases: string[]
+  legacyApiPrefix: string | null
   enabled: boolean
   nav: ProjectNav
 }
@@ -52,7 +54,7 @@ export interface DiscoveredProject {
   loadFrontend: () => Promise<ProjectFrontendModule>
 }
 
-/** Absolute sidebar link derived from a manifest. The shell does not read this yet. */
+/** Absolute sidebar link derived from a manifest. */
 export interface ProjectNavLink {
   projectId: string
   to: string

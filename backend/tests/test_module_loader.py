@@ -455,6 +455,33 @@ def _write_project(
     (package_dir / "plugin.py").write_text(plugin_source, encoding="utf-8")
 
 
+def _mounted_http_paths(app: FastAPI) -> list[str]:
+    """Flatten FastAPI's included routers into method-free full paths."""
+    paths: list[str] = []
+
+    def walk(route: object, prefix: str) -> None:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        if isinstance(path, str) and methods:
+            paths.append(f"{prefix}{path}")
+            return
+        include = getattr(route, "include_context", None)
+        next_prefix = prefix
+        if include is not None:
+            extra = getattr(include, "prefix", "") or ""
+            next_prefix = f"{prefix}{extra}"
+        original = getattr(route, "original_router", None)
+        children = getattr(original, "routes", None) if original is not None else None
+        if not children:
+            return
+        for child in children:
+            walk(child, next_prefix)
+
+    for route in app.routes:
+        walk(route, "")
+    return paths
+
+
 def _route_plugin(path: str) -> str:
     return f"""
 from fastapi import APIRouter
@@ -468,3 +495,82 @@ def build_router() -> APIRouter:
 
     return router
 """
+
+
+def test_only_system_monitor_may_use_legacy_api_root(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        "beta",
+        _manifest(
+            id="beta",
+            pythonPackage="proj_beta",
+            routeBase="/beta",
+            apiPrefix="/api/beta",
+            legacyApiPrefix="/api",
+        ),
+    )
+    with pytest.raises(ProjectModuleError, match="system-monitor"):
+        discover_project_manifests(tmp_path)
+
+
+def test_legacy_api_prefix_cannot_claim_platform_health(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        "alpha",
+        _manifest(legacyApiPrefix="/api/health"),
+    )
+    with pytest.raises(ProjectModuleError, match="health"):
+        discover_project_manifests(tmp_path)
+
+
+def test_legacy_route_cannot_overlap_route_base(tmp_path: Path) -> None:
+    _write_project(tmp_path, "alpha", _manifest(legacyRouteBases=["/alpha"]))
+    with pytest.raises(ProjectModuleError, match="overlaps"):
+        discover_project_manifests(tmp_path)
+
+
+def test_legacy_api_prefix_cannot_duplicate_another_project(tmp_path: Path) -> None:
+    _write_project(tmp_path, "alpha", _manifest())
+    _write_project(
+        tmp_path,
+        "beta",
+        _manifest(
+            id="beta",
+            pythonPackage="proj_beta",
+            routeBase="/beta",
+            apiPrefix="/api/beta",
+            legacyApiPrefix="/api/alpha",
+        ),
+    )
+    with pytest.raises(ProjectModuleError, match="duplicate legacyApiPrefix '/api/alpha'"):
+        discover_project_manifests(tmp_path)
+
+
+def test_system_monitor_legacy_api_prefix_mounts_both_paths(
+    tmp_path: Path,
+    isolated_imports: None,
+) -> None:
+    _write_project(
+        tmp_path,
+        "system-monitor",
+        _manifest(
+            id="system-monitor",
+            name="Home Lab",
+            pythonPackage="proj_legacy_monitor",
+            routeBase="/system-monitor",
+            apiPrefix="/api/system-monitor",
+            legacyApiPrefix="/api",
+            legacyRouteBases=["/homelab"],
+        ),
+        STATUS_PLUGIN,
+    )
+    app = FastAPI()
+    mounted = register_project_routers(app, tmp_path)
+
+    assert [item.id for item in mounted] == ["system-monitor"]
+    client = TestClient(app)
+    assert client.get("/api/status").json() == {"ok": True}
+    assert client.get("/api/system-monitor/status").json() == {"ok": True}
+    paths = _mounted_http_paths(app)
+    assert paths.count("/api/status") == 1
+    assert paths.count("/api/system-monitor/status") == 1
