@@ -73,8 +73,11 @@ export function Sidebar({
           ))
         )}
 
+      </nav>
+
+      {/* 設定入口獨立於模組捲動區，固定保留在側欄底部。 */}
+      <nav className="sidebar-footer" aria-label="System">
         <div className="sidebar-section">
-          <p className="sidebar-section-label">System</p>
           <NavLink
             to="/settings"
             end

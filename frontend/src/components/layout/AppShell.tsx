@@ -86,16 +86,6 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [mobileOpen]);
 
-  useEffect(() => {
-    if (!(mobileOpen && isMobile)) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mobileOpen, isMobile]);
-
   const closeMobile = () => {
     setMobileOpen(false);
   };
@@ -137,7 +127,8 @@ export function AppShell() {
           onCloseMobile={closeMobile}
         />
 
-        <main className="app-main">
+        {/* 手機導覽開啟時停用背景內容的點擊與鍵盤焦點；CSS 同步暫停捲動。 */}
+        <main className="app-main" inert={mobileOpen && isMobile}>
           <Outlet />
         </main>
       </div>

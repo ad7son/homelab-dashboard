@@ -252,12 +252,12 @@
 
 .service-status-active {
   background: var(--color-success-bg);
-  border-color: #166534;
+  border-color: var(--color-success-border);
   color: var(--color-success-text);
 }
 
 .service-status-inactive {
-  background: #1e293b;
+  background: var(--color-surface);
   border-color: var(--color-border-strong);
   color: var(--color-text-muted);
 }
@@ -275,7 +275,7 @@
 }
 
 .service-status-unknown {
-  background: #334155;
+  background: var(--color-surface-hover);
   border-color: var(--color-border-strong);
   color: var(--color-text-primary);
 }
@@ -559,15 +559,15 @@
 }
 
 .usage-bar-cpu {
-  background: #3b82f6;
+  background: var(--color-chart-cpu);
 }
 
 .usage-bar-memory {
-  background: #8b5cf6;
+  background: var(--color-chart-memory);
 }
 
 .usage-bar-storage {
-  background: #10b981;
+  background: var(--color-accent);
 }
 
 .details-grid {
@@ -659,7 +659,7 @@
 }
 
 .storage-table tbody tr:hover {
-  background: #33415540;
+  background: var(--color-surface-hover);
 }
 
 .connection-banner {
@@ -688,13 +688,13 @@
 }
 
 .connection-banner-unstable {
-  background: #713f1240;
+  background: var(--color-warning-bg);
   border-color: var(--color-warning-border);
   color: var(--color-warning-text);
 }
 
 .connection-banner-offline {
-  background: #7f1d1d40;
+  background: var(--color-danger-bg);
   border-color: var(--color-danger-border);
   color: var(--color-danger-text);
 }

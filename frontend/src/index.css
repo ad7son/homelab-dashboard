@@ -15,34 +15,38 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Colors */
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-border: #334155;
-  --color-border-strong: #475569;
-  --color-text-primary: #e2e8f0;
-  --color-text-strong: #f8fafc;
-  --color-text-muted: #94a3b8;
-  --color-text-subtle: #64748b;
-  --color-accent: #38bdf8;
+  /* 石墨灰與柔白為主色：提亮底色、降低亮字反差，讓小字保持清楚。 */
+  color-scheme: dark;
+  --color-background: #1b1c1e;
+  --color-shell: #1f2022;
+  --color-surface: #242527;
+  --color-surface-hover: #2d2e31;
+  --color-selected: #353639;
+  --color-border: #36373a;
+  --color-border-strong: #57585c;
+  --color-text-primary: #c8c9cb;
+  --color-text-strong: #dedee0;
+  --color-text-muted: #b0b1b5;
+  --color-text-subtle: #9d9ea3;
+  --color-accent: #c9cace;
 
-  /* Chart series */
-  --color-chart-cpu: #3b82f6;
-  --color-chart-temperature: #f59e0b;
-  --color-chart-memory: #8b5cf6;
-  --color-chart-download: #38bdf8;
-  --color-chart-upload: #10b981;
+  /* 圖表使用低飽和色，保留同圖多序列的辨識度。 */
+  --color-chart-cpu: #c5c7cc;
+  --color-chart-temperature: #c5aa7e;
+  --color-chart-memory: #a9b7a4;
+  --color-chart-download: #a5b8c9;
+  --color-chart-upload: #c6ab98;
 
   /* Semantic status colors */
-  --color-success-bg: #14532d;
-  --color-success-text: #86efac;
-  --color-warning-bg: #713f12;
-  --color-warning-text: #fde68a;
-  --color-warning-border: #b45309;
-  --color-danger-bg: #7f1d1d;
-  --color-danger-text: #fca5a5;
-  --color-danger-border: #b91c1c;
+  --color-success-bg: #222d25;
+  --color-success-text: #b1c5b2;
+  --color-success-border: #425747;
+  --color-warning-bg: #332c20;
+  --color-warning-text: #d8be8d;
+  --color-warning-border: #78613c;
+  --color-danger-bg: #352523;
+  --color-danger-text: #dca9a2;
+  --color-danger-border: #80564f;
 
   /* Spacing */
   --space-xs: 0.25rem;
@@ -69,16 +73,36 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* 捲動交給外殼內的內容區，避免整份文件帶著頁首與側欄一起移動。 */
+  overflow: hidden;
+}
+
+/* 原生捲軸與文字選取同步採用中性色，避免混入預設的亮色。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) var(--color-background);
+}
+
+::selection {
+  background: var(--color-border-strong);
+  color: var(--color-text-strong);
+}
+
+a {
+  color: var(--color-accent);
 }
 
 #root {
-  min-height: 100vh;
+  /* 以動態視窗高度適應手機瀏覽器工具列；100vh 為舊瀏覽器的備援。 */
+  height: 100vh;
+  height: 100dvh;
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .global-header {
@@ -87,9 +111,10 @@ body {
   gap: var(--space-sm);
   width: 100%;
   height: var(--app-header-height);
+  flex-shrink: 0;
   padding: 0 var(--space-lg);
   border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-background);
+  background-color: var(--color-shell);
   z-index: 30;
 }
 
@@ -163,6 +188,15 @@ body {
 .app-main {
   flex: 1;
   min-width: 0;
+  /* 允許 flex 子項縮至可用高度，超出的專案內容才會在此區捲動。 */
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.app-main[inert] {
+  /* 手機導覽開啟時，保留內容位置並暫停背景捲動。 */
+  overflow: hidden;
 }
 
 .sidebar {
@@ -170,7 +204,7 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   width: var(--sidebar-width);
-  background-color: var(--color-background);
+  background-color: var(--color-shell);
   border-right: 1px solid var(--color-border);
   overflow: hidden;
   transition:
@@ -186,13 +220,27 @@ body {
 
 .sidebar-mobile-header {
   display: none;
+  flex-shrink: 0;
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
+  /* 模組清單填滿剩餘高度，將獨立的設定區推至底部。 */
+  flex: 1;
   gap: 1.25rem;
   padding: 1.25rem var(--space-sm);
+  white-space: nowrap;
+  /* 導覽項目過多時可獨立捲動，不推高整個外殼。 */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: var(--space-sm);
+  padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom));
   white-space: nowrap;
 }
 
@@ -217,7 +265,7 @@ body {
   gap: 0.65rem;
   padding: 0.55rem 0.65rem;
   border-radius: var(--radius-md);
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   text-decoration: none;
   font-size: 0.95rem;
 }
@@ -228,8 +276,9 @@ body {
 }
 
 .sidebar-nav-link-active {
-  background: var(--color-surface);
+  background: var(--color-selected);
   color: var(--color-text-strong);
+  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .sidebar-overlay {
@@ -303,7 +352,7 @@ body {
     position: fixed;
     inset: 0;
     z-index: 35;
-    background: rgba(15, 23, 42, 0.55);
+    background: rgba(20, 21, 23, 0.7);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
