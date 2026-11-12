@@ -12,15 +12,23 @@ import { CpuCard } from '../components/metrics/CpuCard';
 import { MemoryCard } from '../components/metrics/MemoryCard';
 import { NetworkCard } from '../components/metrics/NetworkCard';
 import { StorageCard } from '../components/metrics/StorageCard';
-import { CpuDetails } from '../components/sections/CpuDetails';
-import { StorageList } from '../components/sections/StorageList';
-import { SystemInfoSection } from '../components/sections/SystemInfo';
+import { ServicesSection } from '../components/services/ServicesSection';
 import { useSystemOverview } from '../hooks/useSystemOverview';
+import { useServices } from '../hooks/useServices';
 
 export function HomeLabDashboard() {
   const { data, loading, error, lastUpdated, status, refresh, samples } =
     useSystemOverview();
   const [monitoringMode, setMonitoringMode] = useState<MonitoringMode>('live');
+  const services = useServices();
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  // 頁首統一刷新主機、服務與目前啟用的歷史圖表；不重設所選指標或時間範圍。
+  const refreshPage = () => {
+    refresh();
+    services.refresh();
+    setRefreshToken((token) => token + 1);
+  };
 
   if (loading && !data) {
     return (
@@ -34,10 +42,9 @@ export function HomeLabDashboard() {
     return (
       <PageContainer>
         <HomeLabHeader
-          system={null}
           status={status}
           lastUpdated={lastUpdated}
-          onRefresh={refresh}
+          onRefresh={refreshPage}
         />
         <HomeLabLoadState mode="failed" error={error} onRetry={refresh} />
       </PageContainer>
@@ -51,55 +58,38 @@ export function HomeLabDashboard() {
   return (
     <PageContainer>
       <HomeLabHeader
-        system={data.system}
         status={status}
         lastUpdated={lastUpdated}
-        onRefresh={refresh}
+        onRefresh={refreshPage}
       />
 
       {status === 'unstable' || status === 'offline' ? (
         <ConnectionBanner status={status} lastUpdated={lastUpdated} />
       ) : null}
 
-      <section
-        className="current-status"
-        aria-labelledby="current-status-heading"
-      >
-        <SectionHeader
-          id="current-status-heading"
-          title="Current Status"
-          description="Live system health at a glance"
-        />
-        <div className="metrics-grid">
-          <CpuCard cpu={data.cpu} samples={samples} />
-          <MemoryCard memory={data.memory} samples={samples} />
-          <StorageCard disks={data.disks} />
-          <NetworkCard network={data.network} />
+      {/* 桌面版左右各半：狀態卡與單一可切換圖表並列。 */}
+      <section className="machine-state" aria-labelledby="machine-state-heading">
+        <SectionHeader id="machine-state-heading" title="Machine State" />
+        <div className="monitor-overview-grid">
+          <div className="current-status">
+            <div className="metrics-grid">
+              <CpuCard cpu={data.cpu} samples={samples} />
+              <MemoryCard memory={data.memory} samples={samples} />
+              <StorageCard disks={data.disks} />
+              <NetworkCard network={data.network} />
+            </div>
+          </div>
+
+          <MonitoringSection
+            samples={samples}
+            mode={monitoringMode}
+            onModeChange={setMonitoringMode}
+            refreshToken={refreshToken}
+          />
         </div>
       </section>
 
-      <MonitoringSection
-        samples={samples}
-        mode={monitoringMode}
-        onModeChange={setMonitoringMode}
-      />
-
-      <section
-        className="system-details"
-        aria-labelledby="system-details-heading"
-      >
-        <SectionHeader
-          id="system-details-heading"
-          title="System Details"
-          tone="secondary"
-        />
-        <div className="details-grid">
-          <SystemInfoSection system={data.system} />
-          <CpuDetails cpu={data.cpu} />
-        </div>
-      </section>
-
-      <StorageList disks={data.disks} />
+      <ServicesSection services={services} />
     </PageContainer>
   );
 }

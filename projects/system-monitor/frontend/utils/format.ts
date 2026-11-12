@@ -14,18 +14,6 @@ export function formatBytesPerSecond(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
-export function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  parts.push(`${minutes}m`);
-  return parts.join(' ');
-}
-
 /** Compact service uptime from uptime_seconds. Null stays unavailable (caller). */
 export function formatServiceUptime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
@@ -71,13 +59,6 @@ export function formatLocalDateTime(timestampMs: number): string {
 
 export function formatPercent(value: number, decimals = 1): string {
   return `${value.toFixed(decimals)}%`;
-}
-
-export function formatFrequency(mhz: number): string {
-  if (mhz >= 1000) {
-    return `${(mhz / 1000).toFixed(2)} GHz`;
-  }
-  return `${mhz.toFixed(0)} MHz`;
 }
 
 export function formatTemperature(celsius: number): string {

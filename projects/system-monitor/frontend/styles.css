@@ -1,7 +1,20 @@
-.homelab-header-subtitle {
+/* 單行標題與右側兩行狀態以整組高度置中，不影響其他頁面的共用頁首。 */
+.monitor-page-header {
+  align-items: center;
+}
+
+.monitor-page-header .page-header-title {
   margin: 0;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
+  font-size: 2rem;
+  line-height: 1.3;
+}
+
+.monitor-page-header .page-header-actions {
+  margin-left: auto;
+}
+
+.monitor-page-header .homelab-header-meta {
+  flex-wrap: nowrap;
 }
 
 .homelab-header-meta {
@@ -9,6 +22,24 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
+}
+
+.homelab-header-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  line-height: 1.4;
+}
+
+/* 保留文字按鈕的共用樣式，只有頁首刷新採用方形圖示按鈕。 */
+.homelab-refresh-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .homelab-status {
@@ -68,6 +99,10 @@
 
 .homelab-refresh-button:hover {
   background: var(--color-surface-hover);
+}
+
+.homelab-refresh-button.homelab-refresh-icon-button {
+  padding: 0;
 }
 
 .homelab-refresh-button:disabled {
@@ -304,8 +339,6 @@
 }
 
 .current-status,
-.system-details,
-.storage-details,
 .realtime-monitoring {
   margin-bottom: var(--space-lg);
 }
@@ -393,14 +426,64 @@
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-md);
 }
 
-.realtime-charts-grid {
+/* 左右欄各佔可用內容寬度的一半，內部內容可縮小而不撐破版面。 */
+.monitor-overview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-md);
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.monitor-overview-grid > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.monitor-overview-grid .metrics-grid {
+  flex: 1;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.monitor-overview-grid .metric-chart-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.monitor-overview-grid .metric-chart-body {
+  /* 圖表填滿剩餘空間，由左側卡片內容決定整區高度，避免反過來撐高卡片。 */
+  flex: 1;
+  height: 0;
+  min-height: 0;
+}
+
+.monitor-overview-grid .monitoring-panel-state {
+  flex: 1;
+  min-height: 0;
+}
+
+.monitoring-metric-select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.monitoring-metric-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .metric-chart-card {
@@ -465,7 +548,7 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .realtime-charts-grid {
+  .monitor-overview-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -480,7 +563,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 1.25rem;
+  padding: 1rem;
 }
 
 .metric-card h2 {
@@ -526,14 +609,32 @@
 }
 
 .network-rates {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
   margin-bottom: 0.65rem;
 }
 
 .network-rate {
   min-width: 0;
+}
+
+.network-rate .metric-primary-sm {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+/* 上下堆疊時圖表不再依賴左欄高度，給它獨立且可讀的繪圖空間。 */
+@media (max-width: 900px) {
+  .monitor-overview-grid .metric-chart-body {
+    flex: auto;
+    height: 220px;
+    min-height: 220px;
+  }
+
+  .monitor-overview-grid .monitoring-panel-state {
+    min-height: 220px;
+  }
 }
 
 .rate-label {
@@ -568,98 +669,6 @@
 
 .usage-bar-storage {
   background: var(--color-accent);
-}
-
-.details-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
-}
-
-@media (max-width: 768px) {
-  .details-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.detail-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 1.25rem;
-}
-
-.detail-section-quiet {
-  background: transparent;
-}
-
-.detail-section h2 {
-  margin: 0 0 var(--space-md);
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-sm) var(--space-md);
-  margin: 0;
-}
-
-.detail-grid div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.detail-grid dt {
-  font-size: 0.75rem;
-  color: var(--color-text-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.detail-grid dd {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--color-text-primary);
-}
-
-.table-wrapper {
-  overflow-x: auto;
-}
-
-.storage-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.storage-table th,
-.storage-table td {
-  padding: 0.6rem var(--space-sm);
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.storage-table th {
-  color: var(--color-text-muted);
-  font-weight: 500;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.storage-table td {
-  color: var(--color-text-primary);
-}
-
-.storage-table tbody tr:hover {
-  background: var(--color-surface-hover);
 }
 
 .connection-banner {
@@ -764,16 +773,4 @@
 .homelab-retry-button:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-}
-
-.empty-message {
-  color: var(--color-text-muted);
-  text-align: center;
-  padding: 3rem var(--space-md);
-}
-
-@media (max-width: 520px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
 }

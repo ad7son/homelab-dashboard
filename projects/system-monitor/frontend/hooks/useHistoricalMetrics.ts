@@ -9,6 +9,7 @@ const DEFAULT_RANGE: HistoricalRange = '1h';
 
 interface UseHistoricalMetricsOptions {
   enabled: boolean;
+  refreshToken: number;
 }
 
 interface UseHistoricalMetricsResult {
@@ -26,6 +27,7 @@ function isAbortError(error: unknown): boolean {
 
 export function useHistoricalMetrics({
   enabled,
+  refreshToken,
 }: UseHistoricalMetricsOptions): UseHistoricalMetricsResult {
   const [range, setRangeState] = useState<HistoricalRange>(DEFAULT_RANGE);
   const [data, setData] = useState<HistoricalMetricsResponse | null>(null);
@@ -100,7 +102,7 @@ export function useHistoricalMetrics({
     return () => {
       controller.abort();
     };
-  }, [enabled, range, reloadToken]);
+  }, [enabled, range, reloadToken, refreshToken]);
 
   return {
     range,

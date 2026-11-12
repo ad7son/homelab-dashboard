@@ -4,10 +4,9 @@ import type { ServicesResponse } from '../types/services';
 
 const POLL_INTERVAL_MS = 15_000;
 
-interface UseServicesResult {
+export interface UseServicesResult {
   data: ServicesResponse | null;
   loading: boolean;
-  refreshing: boolean;
   error: string | null;
   lastUpdated: Date | null;
   refresh: () => void;
@@ -26,7 +25,6 @@ function isAbortError(error: unknown): boolean {
 export function useServices(): UseServicesResult {
   const [data, setData] = useState<ServicesResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -34,7 +32,6 @@ export function useServices(): UseServicesResult {
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
-  const hasDataRef = useRef(false);
 
   const fetchServices = useCallback(async () => {
     if (inFlightRef.current) {
@@ -49,17 +46,12 @@ export function useServices(): UseServicesResult {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    if (hasDataRef.current) {
-      setRefreshing(true);
-    }
-
     try {
       const response = await getServices(controller.signal);
       if (!mountedRef.current || requestId !== requestIdRef.current) {
         return;
       }
 
-      hasDataRef.current = true;
       setData(response);
       setLastUpdated(new Date());
       setError(null);
@@ -81,7 +73,6 @@ export function useServices(): UseServicesResult {
       inFlightRef.current = false;
       if (mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
-        setRefreshing(false);
       }
     }
   }, []);
@@ -118,7 +109,6 @@ export function useServices(): UseServicesResult {
   return {
     data,
     loading,
-    refreshing,
     error,
     lastUpdated,
     refresh,

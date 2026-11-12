@@ -1,13 +1,15 @@
+import { useState } from 'react';
 import type { RealtimeSample } from '../../types/realtime';
 import { HISTORICAL_RANGES, type HistoricalRange } from '../../types/history';
 import { useHistoricalMetrics } from '../../hooks/useHistoricalMetrics';
-import { SectionHeader } from '@shell/components/layout/SectionHeader';
 import { HistoricalMonitoringCharts } from './HistoricalMonitoringCharts';
 import { LiveMonitoringCharts } from './LiveMonitoringCharts';
+import { MONITORING_METRICS, type MonitoringMetric } from '../../types/monitoring';
 
 type MonitoringMode = 'live' | 'history';
 
 interface MonitoringSectionProps {
+  refreshToken: number;
   samples: RealtimeSample[];
   mode: MonitoringMode;
   onModeChange: (mode: MonitoringMode) => void;
@@ -15,39 +17,35 @@ interface MonitoringSectionProps {
 
 export function MonitoringSection({
   samples,
+  refreshToken,
   mode,
   onModeChange,
 }: MonitoringSectionProps) {
+  // 指標選擇獨立於即時／歷史模式，切換模式或範圍時保留同一個指標。
+  const [metric, setMetric] = useState<MonitoringMetric>('cpu');
   const historyEnabled = mode === 'history';
   const { range, setRange, data, loading, error, retry } = useHistoricalMetrics({
     enabled: historyEnabled,
+    refreshToken,
   });
 
   const isLive = mode === 'live';
 
   return (
-    <section
+    <div
       className="realtime-monitoring"
-      aria-labelledby="monitoring-heading"
     >
-      <SectionHeader
-        id="monitoring-heading"
-        title="Monitoring"
-        description={
-          isLive
-            ? 'Live behavior and short-term movement'
-            : 'Historical trends from persistent samples'
-        }
-        meta={
-          isLive ? (
-            <span className="section-header-eyebrow">Last 5 minutes</span>
-          ) : (
-            <span className="section-header-eyebrow">Persistent history</span>
-          )
-        }
-      />
-
       <div className="monitoring-controls">
+        <select
+          className="monitoring-metric-select"
+          aria-label="Monitoring metric"
+          value={metric}
+          onChange={(event) => setMetric(event.target.value as MonitoringMetric)}
+        >
+          {MONITORING_METRICS.map((item) => (
+            <option key={item.value} value={item.value}>{item.label}</option>
+          ))}
+        </select>
         <div className="segmented-control" role="group" aria-label="Monitoring mode">
           <button
             type="button"
@@ -101,7 +99,7 @@ export function MonitoringSection({
       </div>
 
       {isLive ? (
-        <LiveMonitoringCharts samples={samples} />
+        <LiveMonitoringCharts samples={samples} metric={metric} />
       ) : loading ? (
         <div className="monitoring-panel-state" role="status">
           Loading historical data…
@@ -126,9 +124,9 @@ export function MonitoringSection({
           No historical data available for this range.
         </div>
       ) : data ? (
-        <HistoricalMonitoringCharts range={range} samples={data.samples} />
+        <HistoricalMonitoringCharts range={range} samples={data.samples} metric={metric} />
       ) : null}
-    </section>
+    </div>
   );
 }
 

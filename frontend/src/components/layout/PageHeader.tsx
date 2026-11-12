@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react';
 
 interface PageHeaderProps {
+  className?: string;
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
-    <header className="page-header">
+    <header className={['page-header', className].filter(Boolean).join(' ')}>
       <div className="page-header-main">
         <h1 className="page-header-title">{title}</h1>
         {description != null && description !== '' && (

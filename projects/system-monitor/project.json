@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "system-monitor",
-  "name": "Home Lab",
+  "name": "Monitor",
   "description": "Real-time system monitoring dashboard",
   "pythonPackage": "system_monitor",
   "routeBase": "/system-monitor",
@@ -15,16 +15,10 @@
     "items": [
       {
         "path": "",
-        "label": "Home Lab",
+        "label": "Monitor",
         "icon": "server",
         "end": true,
-        "documentTitle": "Home Lab"
-      },
-      {
-        "path": "services",
-        "label": "Services",
-        "icon": "boxes",
-        "documentTitle": "Services"
+        "documentTitle": "Monitor"
       }
     ]
   }

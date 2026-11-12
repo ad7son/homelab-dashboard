@@ -1,9 +1,10 @@
-import type { ConnectionStatus, SystemInfo } from '../../types/system';
-import { formatClockTime, formatUptime } from '../../utils/format';
+import { RefreshCw } from 'lucide-react';
+import type { ConnectionStatus } from '../../types/system';
+import { formatClockTime } from '../../utils/format';
 import { PageHeader } from '@shell/components/layout/PageHeader';
+import projectManifest from '../../../project.json';
 
 interface HomeLabHeaderProps {
-  system: SystemInfo | null;
   status: ConnectionStatus;
   lastUpdated: Date | null;
   onRefresh: () => void;
@@ -16,38 +17,35 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export function HomeLabHeader({
-  system,
   status,
   lastUpdated,
   onRefresh,
 }: HomeLabHeaderProps) {
-  const description = system ? (
-    <p className="homelab-header-subtitle">
-      {system.hostname} · {system.operating_system} · Uptime{' '}
-      {formatUptime(system.uptime)}
-    </p>
-  ) : undefined;
-
   const actions = (
     <div className="homelab-header-meta">
-      <span className={`homelab-status homelab-status-${status}`}>
-        <span className="homelab-status-dot" aria-hidden="true" />
-        {STATUS_LABELS[status]}
-      </span>
-      <span className="homelab-last-updated">
-        Last updated {formatClockTime(lastUpdated)}
-      </span>
+      {/* 連線狀態與更新時間上下排列，刷新按鈕獨立置於右側。 */}
+      <div className="homelab-header-status">
+        <span className={`homelab-status homelab-status-${status}`}>
+          <span className="homelab-status-dot" aria-hidden="true" />
+          {STATUS_LABELS[status]}
+        </span>
+        <span className="homelab-last-updated">
+          Last updated {formatClockTime(lastUpdated)}
+        </span>
+      </div>
       <button
         type="button"
-        className="homelab-refresh-button"
+        className="homelab-refresh-button homelab-refresh-icon-button"
         onClick={onRefresh}
+        aria-label="Refresh Monitor"
+        title="Refresh all monitoring data"
       >
-        Refresh
+        <RefreshCw size={18} aria-hidden="true" />
       </button>
     </div>
   );
 
   return (
-    <PageHeader title="Home Lab" description={description} actions={actions} />
+    <PageHeader className="monitor-page-header" title={projectManifest.name} actions={actions} />
   );
 }
