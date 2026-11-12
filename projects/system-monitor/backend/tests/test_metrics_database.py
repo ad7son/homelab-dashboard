@@ -1,25 +1,25 @@
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 from pathlib import Path
 
 import pytest
 import sqlite3
 
-from system_monitor.db.metrics_database import (
-    CURRENT_SCHEMA_VERSION,
-    ENV_METRICS_DB_PATH,
-    DuplicateMetricSampleError,
-    MetricSampleRecord,
-    UnsupportedSchemaVersionError,
-    connect_metrics_database,
-    count_metric_samples,
-    default_metrics_db_path,
-    fetch_metric_sample,
-    get_journal_mode,
-    get_schema_version,
-    insert_metric_sample,
-    resolve_metrics_db_path,
-)
+CURRENT_SCHEMA_VERSION = monitor_module('history.database').CURRENT_SCHEMA_VERSION
+ENV_METRICS_DB_PATH = monitor_module('history.database').ENV_METRICS_DB_PATH
+DuplicateMetricSampleError = monitor_module('history.database').DuplicateMetricSampleError
+UnsupportedSchemaVersionError = monitor_module('history.database').UnsupportedSchemaVersionError
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+count_metric_samples = monitor_module('history.database').count_metric_samples
+default_metrics_db_path = monitor_module('history.database').default_metrics_db_path
+fetch_metric_sample = monitor_module('history.database').fetch_metric_sample
+get_journal_mode = monitor_module('history.database').get_journal_mode
+get_schema_version = monitor_module('history.database').get_schema_version
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+resolve_metrics_db_path = monitor_module('history.database').resolve_metrics_db_path
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
 
 PRODUCTION_DB_PATH = Path("/srv/a7las/data/metrics.db")
 

@@ -183,6 +183,3 @@ export function MetricChart({
     </article>
   );
 }
-
-/** @deprecated Prefer MetricChart */
-export const RealtimeChart = MetricChart;

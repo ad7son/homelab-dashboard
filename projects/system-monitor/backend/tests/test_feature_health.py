@@ -1,13 +1,18 @@
 """以受控來源驗證健康判定，不依賴測試主機是否具備特定硬體。"""
+
+from monitor_backend import module as monitor_module
 import json
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
-from system_monitor.db.metrics_database import MetricSampleRecord, connect_metrics_database, insert_metric_sample
-from system_monitor.services import feature_health_service as health
-from system_monitor.services.collector_status import record_collector_result, status_path
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
+health = monitor_module('health.checks')
+record_collector_result = monitor_module('collector.status').record_collector_result
+status_path = monitor_module('collector.status').status_path
 
 
 @pytest.fixture
@@ -24,11 +29,11 @@ def sources(monkeypatch, tmp_path):
         'network': {'interface': 'eth0', 'download_rate': 0, 'upload_rate': 0},
     }
     for module, method, key in [
-        (health.cpu_service, 'get_cpu_info', 'cpu'),
-        (health.memory_service, 'get_memory_info', 'memory'),
-        (health.gpu_service, 'get_gpu_info', 'gpu'),
-        (health.disk_io_service, 'get_disk_io_info', 'disk-io'),
-        (health.network_service, 'get_network_info', 'network'),
+        (health.readers, 'get_cpu_info', 'cpu'),
+        (health.readers, 'get_memory_info', 'memory'),
+        (health.gpu, 'get_gpu_info', 'gpu'),
+        (health.readers, 'get_disk_io_info', 'disk-io'),
+        (health.readers, 'get_network_info', 'network'),
     ]:
         monkeypatch.setattr(module, method, lambda key=key: values[key])
     connection = connect_metrics_database(path)
@@ -65,7 +70,7 @@ def test_first_sample_is_unknown(sources):
 def test_reader_failure_is_isolated_and_preserves_traceback(sources, monkeypatch):
     def fail():
         raise PermissionError('CPU permission denied')
-    monkeypatch.setattr(health.cpu_service, 'get_cpu_info', fail)
+    monkeypatch.setattr(health.readers, 'get_cpu_info', fail)
     result = report()
     assert result['cpu'].status == 'issues'
     assert result['memory'].status == 'healthy'
@@ -159,7 +164,7 @@ def test_bad_schema_is_reported_without_migration(sources):
 
 
 def test_collector_records_failures_and_recovers(sources, monkeypatch):
-    from system_monitor.collector import metrics_collector
+    metrics_collector = monitor_module('collector.metrics_collector')
     _, path, sample = sources
     def fail(*args, **kwargs):
         raise OSError('read failed')
@@ -172,3 +177,15 @@ def test_collector_records_failures_and_recovers(sources, monkeypatch):
     monkeypatch.setattr(metrics_collector, 'collect_once', lambda *args, **kwargs: sample)
     metrics_collector.run_collect_iteration(path)
     assert json.loads(status_path(path).read_text())['error'] is None
+
+
+@pytest.mark.parametrize('content', ['not json', '[]'])
+def test_broken_collector_status_keeps_database_evidence(sources, content):
+    """旁檔損壞時保留讀取原因，最新成功樣本仍取自真實資料庫。"""
+    _, path, sample = sources
+    status_path(path).write_text(content)
+    result = report()['history-write']
+    assert result.raw_data['collector'] is None
+    assert result.raw_data['collector_status_error'] is not None
+    assert result.raw_data['latest_sample_at_ms'] == sample.timestamp_ms
+    assert result.status == 'healthy'

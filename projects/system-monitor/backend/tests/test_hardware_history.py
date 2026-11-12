@@ -1,5 +1,7 @@
 """GPU／磁碟 I/O 的資料庫升級、採集、聚合及 API 回歸測試。"""
 
+from monitor_backend import module as monitor_module
+
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,20 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from system_monitor.collector.metrics_collector import collect_once
-from system_monitor.db.metrics_database import (
-    MetricSampleRecord,
-    connect_metrics_database,
-    fetch_metric_sample,
-    get_schema_version,
-    initialize_metrics_database,
-    insert_metric_sample,
-)
-from system_monitor.schemas.disk_io import DiskIoInfo
-from system_monitor.schemas.gpu import GpuInfo
-from system_monitor.schemas.history import HistoryRange
-from system_monitor.services.history_aggregation import aggregate_metric_samples
-from system_monitor.services.history_service import get_historical_metrics
+collect_once = monitor_module('collector.metrics_collector').collect_once
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+fetch_metric_sample = monitor_module('history.database').fetch_metric_sample
+get_schema_version = monitor_module('history.database').get_schema_version
+initialize_metrics_database = monitor_module('history.database').initialize_metrics_database
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
+DiskIoInfo = monitor_module('machine.models').DiskIoInfo
+GpuInfo = monitor_module('machine.models').GpuInfo
+HistoryRange = monitor_module('history.models').HistoryRange
+aggregate_metric_samples = monitor_module('history.query').aggregate_metric_samples
+get_historical_metrics = monitor_module('history.query').get_historical_metrics
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_all_history_ranges_expose_new_metrics(tmp_path: Path, history_range: Hi
 
 def test_history_api_upgrades_v1_and_keeps_missing_values(v1_database: Path, monkeypatch) -> None:
     monkeypatch.setenv("A7LAS_METRICS_DB_PATH", str(v1_database))
-    monkeypatch.setattr("system_monitor.services.history_service.time.time", lambda: 2)
+    monkeypatch.setattr(monitor_module("history.query").time, "time", lambda: 2)
     response = TestClient(app).get("/api/system-monitor/history", params={"range": "15m"})
     assert response.status_code == 200
     row = response.json()["samples"][0]
@@ -154,7 +154,7 @@ def test_history_api_upgrades_v1_and_keeps_missing_values(v1_database: Path, mon
 
 def test_wal_configuration_retries_only_busy_errors(monkeypatch):
     import sqlite3
-    from system_monitor.db import metrics_database as database
+    database = monitor_module('history.database')
 
     class Connection:
         calls = 0
@@ -175,7 +175,7 @@ def test_wal_configuration_retries_only_busy_errors(monkeypatch):
 
 def test_wal_configuration_does_not_hide_other_errors():
     import sqlite3
-    from system_monitor.db import metrics_database as database
+    database = monitor_module('history.database')
 
     class Connection:
         def execute(self, statement):

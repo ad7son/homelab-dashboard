@@ -13,9 +13,6 @@ export const HISTORY_CHART_GAP_THRESHOLD_24H_MS = 11 * 60 * 1000;
 /** Gap larger than ~2 thirty-minute aggregation buckets (7d history). */
 export const HISTORY_CHART_GAP_THRESHOLD_7D_MS = 65 * 60 * 1000;
 
-/** @deprecated Use REALTIME_CHART_GAP_THRESHOLD_MS */
-export const CHART_GAP_THRESHOLD_MS = REALTIME_CHART_GAP_THRESHOLD_MS;
-
 export function historyChartGapThresholdMs(range: HistoricalRange): number {
   switch (range) {
     case '24h':

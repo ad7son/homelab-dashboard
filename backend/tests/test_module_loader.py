@@ -401,7 +401,7 @@ def _app_with_health() -> FastAPI:
 
 def _package_loaded(package: str) -> bool:
     prefix = package + "."
-    return any(name == package or name.startswith(prefix) for name in sys.modules)
+    return any(name.startswith("_a7las_project_") and (name.endswith("." + package) or ("." + prefix) in name) for name in sys.modules)
 
 
 def _manifest(**overrides: object) -> dict[str, object]:
@@ -574,3 +574,38 @@ def test_system_monitor_legacy_api_prefix_mounts_both_paths(
     paths = _mounted_http_paths(app)
     assert paths.count("/api/status") == 1
     assert paths.count("/api/system-monitor/status") == 1
+
+
+def test_multiple_src_packages_keep_relative_imports_isolated(
+    tmp_path: Path,
+    isolated_imports: None,
+) -> None:
+    """成熟專案可使用同名 src 套件，內部相對匯入不能讀到另一份專案。"""
+    plugin = '''
+from fastapi import APIRouter
+from .settings import LABEL
+
+def build_router():
+    router = APIRouter()
+    @router.get("/status")
+    def status():
+        return {"source": LABEL}
+    return router
+'''
+    before_path = list(sys.path)
+    platform_package = sys.modules["app"]
+    for name in ("alpha", "beta"):
+        _write_project(
+            tmp_path,
+            name,
+            _manifest(id=name, pythonPackage="src", routeBase=f"/{name}", apiPrefix=f"/api/{name}"),
+            plugin,
+        )
+        (tmp_path / name / "backend" / "src" / "settings.py").write_text(f"LABEL = {name!r}\n")
+    application = FastAPI()
+    register_project_routers(application, tmp_path)
+    client = TestClient(application)
+    assert client.get("/api/alpha/status").json() == {"source": "alpha"}
+    assert client.get("/api/beta/status").json() == {"source": "beta"}
+    assert sys.modules["app"] is platform_package
+    assert sys.path == before_path

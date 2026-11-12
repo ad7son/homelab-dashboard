@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from system_monitor.db.metrics_database import MetricSampleRecord
-from system_monitor.services.history_aggregation import (
-    BUCKET_5_MIN_MS,
-    BUCKET_30_MIN_MS,
-    aggregate_metric_samples,
-)
+from monitor_backend import module as monitor_module
+
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
+BUCKET_5_MIN_MS = monitor_module('history.query').BUCKET_5_MIN_MS
+BUCKET_30_MIN_MS = monitor_module('history.query').BUCKET_30_MIN_MS
+aggregate_metric_samples = monitor_module('history.query').aggregate_metric_samples
 
 
 def _sample(

@@ -1,12 +1,3 @@
-export interface SystemInfo {
-  hostname: string;
-  operating_system: string;
-  os_version: string | null;
-  kernel: string;
-  architecture: string;
-  uptime: number;
-}
-
 export interface LoadAverage {
   load_1: number;
   load_5: number;
@@ -36,16 +27,6 @@ export interface MemoryInfo {
   swap: SwapInfo;
 }
 
-export interface DiskInfo {
-  device: string | null;
-  mount_point: string;
-  filesystem_type: string;
-  total_bytes: number;
-  used_bytes: number;
-  free_bytes: number;
-  usage_percent: number;
-}
-
 export interface NetworkInfo {
   interface: string | null;
   ip_address: string | null;
@@ -54,10 +35,8 @@ export interface NetworkInfo {
 }
 
 export interface Overview {
-  system: SystemInfo;
   cpu: CpuInfo;
   memory: MemoryInfo;
-  disks: DiskInfo[];
   network: NetworkInfo;
   gpu: GpuInfo;
   disk_io: DiskIoInfo;

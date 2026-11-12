@@ -3,10 +3,12 @@
   "id": "system-monitor",
   "name": "System Monitor",
   "description": "Real-time system monitoring dashboard",
-  "pythonPackage": "system_monitor",
+  "pythonPackage": "src",
   "routeBase": "/system-monitor",
   "apiPrefix": "/api/system-monitor",
-  "legacyRouteBases": ["/homelab"],
+  "legacyRouteBases": [
+    "/homelab"
+  ],
   "legacyApiPrefix": "/api",
   "enabled": true,
   "nav": {

@@ -2,25 +2,19 @@
 
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import A7LAS_VERSION
 from app.main import app
 from app.modules.loader import default_projects_root, discover_project_manifests
-from system_monitor.plugin import build_router
+build_router = monitor_module('plugin').build_router
 
 client = TestClient(app)
 
-LIVE_PATHS = (
-    "overview",
-    "system",
-    "cpu",
-    "memory",
-    "disks",
-    "network",
-    "services",
-)
+LIVE_PATHS = ("overview",)
 
 
 def assert_same_shape(left: object, right: object) -> None:
@@ -48,7 +42,7 @@ def test_system_monitor_manifest_is_discovered() -> None:
     assert match.legacy_api_prefix == "/api"
     assert list(match.legacy_route_bases) == ["/homelab"]
     assert match.route_base == "/system-monitor"
-    assert match.python_package == "system_monitor"
+    assert match.python_package == "src"
 
 
 def test_build_router_returns_a_new_parent_each_call() -> None:
@@ -110,7 +104,32 @@ def _mounted_http_paths() -> list[str]:
 
 def test_each_monitoring_route_is_mounted_once_per_prefix() -> None:
     paths = _mounted_http_paths()
-    for path in (*LIVE_PATHS, "history"):
+    for path in (*LIVE_PATHS, "history", "feature-health"):
         assert paths.count(f"/api/{path}") == 1
         assert paths.count(f"/api/system-monitor/{path}") == 1
     assert paths.count("/api/health") == 1
+
+
+@pytest.mark.parametrize("prefix", ["/api", "/api/system-monitor"])
+@pytest.mark.parametrize("name", ["services", "system", "disks", "cpu", "memory", "network"])
+def test_removed_unused_api_is_not_available(prefix: str, name: str) -> None:
+    """未使用入口已移除，新舊前綴都不得再提供路由或 API 文件。"""
+    path = f"{prefix}/{name}"
+    assert client.get(path).status_code == 404
+    assert path not in app.openapi()["paths"]
+
+
+def test_standalone_entry_exposes_same_project_contract() -> None:
+    """src.main:app 可單獨啟動，同時保留與平台掛載一致的三組專案 API。"""
+    standalone = monitor_module('main').app
+    standalone_paths = standalone.openapi()["paths"]
+    platform_paths = app.openapi()["paths"]
+    for prefix in ("/api", "/api/system-monitor"):
+        for name in ("overview", "history", "feature-health"):
+            path = f"{prefix}/{name}"
+            assert standalone_paths[path] == platform_paths[path]
+    assert "/api/health" not in standalone_paths
+    assert standalone.openapi()["components"]["schemas"] == {
+        name: definition for name, definition in app.openapi()["components"]["schemas"].items()
+        if name != "HealthResponse"
+    }

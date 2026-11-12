@@ -1,33 +1,32 @@
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 import sys
 from pathlib import Path
 from threading import Event, Thread
 
 import pytest
 
-from system_monitor.collector.metrics_collector import (
-    COLLECTION_INTERVAL_SECONDS,
-    MAINTENANCE_INTERVAL_SECONDS,
-    RAW_RETENTION_MS,
-    CollectorLockError,
-    CollectorProcessLock,
-    collect_once,
-    run_collect_iteration,
-    run_collector_loop,
-    run_retention_cleanup,
-)
-from system_monitor.db.metrics_database import (
-    DuplicateMetricSampleError,
-    MetricSampleRecord,
-    connect_metrics_database,
-    count_metric_samples,
-    fetch_metric_sample,
-    insert_metric_sample,
-)
-from system_monitor.schemas.cpu import CpuInfo
-from system_monitor.schemas.memory import MemoryInfo, SwapInfo
-from system_monitor.schemas.network import NetworkInfo
+COLLECTION_INTERVAL_SECONDS = monitor_module('collector.metrics_collector').COLLECTION_INTERVAL_SECONDS
+MAINTENANCE_INTERVAL_SECONDS = monitor_module('collector.metrics_collector').MAINTENANCE_INTERVAL_SECONDS
+RAW_RETENTION_MS = monitor_module('collector.metrics_collector').RAW_RETENTION_MS
+CollectorLockError = monitor_module('collector.metrics_collector').CollectorLockError
+CollectorProcessLock = monitor_module('collector.metrics_collector').CollectorProcessLock
+collect_once = monitor_module('collector.metrics_collector').collect_once
+run_collect_iteration = monitor_module('collector.metrics_collector').run_collect_iteration
+run_collector_loop = monitor_module('collector.metrics_collector').run_collector_loop
+run_retention_cleanup = monitor_module('collector.metrics_collector').run_retention_cleanup
+DuplicateMetricSampleError = monitor_module('history.database').DuplicateMetricSampleError
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+count_metric_samples = monitor_module('history.database').count_metric_samples
+fetch_metric_sample = monitor_module('history.database').fetch_metric_sample
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
+CpuInfo = monitor_module('machine.models').CpuInfo
+MemoryInfo = monitor_module('machine.models').MemoryInfo
+SwapInfo = monitor_module('machine.models').SwapInfo
+NetworkInfo = monitor_module('machine.models').NetworkInfo
 
 
 def _cpu(

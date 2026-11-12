@@ -2,7 +2,7 @@
 
 A7LAS is one web application that hosts more than one project. A shared React shell and a shared FastAPI process discover projects from `projects/`. Each project keeps its own pages, API routes, and manifest.
 
-The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, storage, and network metrics, historical charts, and selected systemd services. The second project is Project Showcase, a small read-only module that demonstrates the same discovery path.
+The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, GPU, disk I/O and network metrics, historical charts, and feature health diagnostics. The second project is Project Showcase, a small read-only module that demonstrates the same discovery path.
 
 ## System Architecture
 
@@ -45,7 +45,7 @@ projects/project-showcase/       Showcase frontend, read-only API, and tests
 deploy/systemd/                  Linux unit for the metrics collector
 docs/project-module-spec.md      Module contract
 docs/ai-collaboration.md         Course AI collaboration record
-conftest.py                      Adds each project backend to the pytest path
+conftest.py                      Exposes project test helpers to pytest
 pytest.ini                       Runs platform tests and project tests
 ```
 
@@ -57,13 +57,13 @@ A page that throws is contained by the project error boundary. The shell and the
 
 ## Backend Core
 
-`backend/app/main.py` creates the FastAPI app, allows `GET` from `http://localhost:5173`, mounts `GET /api/health`, and then calls the project loader. It does not import `system_monitor` or `project_showcase`.
+`backend/app/main.py` creates the FastAPI app, allows `GET` from `http://localhost:5173`, mounts `GET /api/health`, and then calls the project loader. It does not hardcode project imports.
 
 The loader rejects duplicate ids, route bases, API prefixes, and final HTTP paths. A failed manifest or plugin aborts startup and names the project. These plugins are trusted source in this repository. The loader is not a sandbox for uploaded code.
 
 ## Project Modules
 
-A module is a directory under `projects/` with `project.json`, `frontend/index.tsx`, and `backend/{pythonPackage}/plugin.py`. The directory name equals `id`. The Python package name uses underscores because a hyphenated directory cannot be imported.
+A module is a directory under `projects/` with `project.json`, `frontend/index.tsx`, and `backend/{pythonPackage}/plugin.py`. The directory name equals `id`. `pythonPackage` names the directory under `backend/` that contains `plugin.py`. System Monitor uses `src`; other projects may retain their own package name. The loader isolates each project, so matching package names do not collide.
 
 `build_router()` returns a new `APIRouter` whose paths are relative, such as `/info`. The loader adds `apiPrefix`.
 
@@ -72,11 +72,11 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 ### System Monitor
 
 - Id: `system-monitor`
-- Pages: `/system-monitor` and `/system-monitor/services`
-- Legacy pages: `/homelab` and `/homelab/services` redirect to the pages above
+- Pages: `/system-monitor` and `/system-monitor/health/system-monitor`
+- Legacy base: `/homelab` redirects to `/system-monitor`, preserving child paths.
 - API prefix: `/api/system-monitor`
 - Legacy API prefix: `/api`, so older clients can keep calling `/api/overview` and the other monitoring paths
-- Live overview polls about every 3 seconds. The services page polls about every 15 seconds.
+- Live overview polls about every 3 seconds. Project Health overview refreshes every 30 seconds; the detail page uses a manually refreshed snapshot.
 - Historical ranges are `15m`, `1h`, `24h`, and `7d`.
 - The collector samples every 30 seconds and keeps raw samples for 7 days.
 - GPU usage and disk read/write rates are available in both Live and History charts. SQLite schema v2 adds three nullable columns and upgrades v1 databases in place, preserving older samples as missing values for these metrics. Restart both the API and collector after updating; new history begins accumulating when the updated collector runs.
@@ -89,6 +89,34 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 - The info payload reads `id`, `name`, and `description` from that project's `project.json`.
 - The page shows a loading state, the response body, or a visible error. It does not invent a successful response.
 - This module has no legacy route and no legacy API prefix.
+
+## System Monitor 後端結構
+
+`projects/system-monitor/backend/src/` 依功能分組，`src/` 本身是 Python 套件，直接包含四個功能資料夾，不再包一層 `app/`。`plugin.py` 集中宣告 `/overview`、`/history`、`/feature-health`。每次 `build_router()` 建立獨立路由，供平台掛載正式及相容前綴。
+
+```text
+src/
+├── main.py           獨立 FastAPI 啟動入口
+├── plugin.py
+├── machine/
+│   ├── models.py       即時資料格式與驗證
+│   ├── readers.py      CPU、記憶體、網路、Disk I/O 與總覽
+│   └── gpu.py          NVIDIA／AMD 來源、平台差異與快取
+├── history/
+│   ├── models.py       儲存樣本與歷史回應格式
+│   ├── database.py     SQLite 連線、交易、遷移與樣本讀寫
+│   └── query.py        時間範圍、降採樣與回應組合
+├── health/
+│   ├── models.py       健康狀態、錯誤與報告格式
+│   └── checks.py       七項功能判定、結果文字與同次證據
+└── collector/
+    ├── metrics_collector.py  背景採集、程序鎖與清理排程
+    └── status.py             最近成功／失敗紀錄的讀寫
+```
+
+各套件另有 `__init__.py`。即時資訊與健康檢查共用主機採集函式；背景採集器使用 `history/database.py` 寫入樣本。健康檢查透過歷史模組查詢資料，並讀取採集器診斷紀錄，不自行操作 SQL 或啟動背景排程。SQL 與連線規則集中於 `database.py`；原有取樣基準、GPU 快取、WAL、schema v2 與 None 語意保持不變。
+
+重構後應重新啟動 API 與採集器，讓兩個程序都載入新模組。採集器指令仍為 `python -m src.collector.metrics_collector`，資料庫路徑仍為平台的 `backend/data/metrics.db`（可由環境變數覆寫）；不需要重建或刪除既有歷史資料。
 
 ## Installation
 
@@ -122,16 +150,31 @@ Open `http://localhost:5173`. Vite proxies `/api` to `http://localhost:8000`.
 From `backend/` in PowerShell, using the shared environment:
 
 ```powershell
-..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
 Interactive docs are at `http://localhost:8000/docs`. Restart Uvicorn after adding or changing a project plugin.
+
+System Monitor 也可獨立啟動。以下指令從儲存庫根目錄執行，使用獨立連接埠以便與平台並行：
+
+```bash
+backend/.venv/bin/python -m uvicorn src.main:app --app-dir projects/system-monitor/backend --reload --port 8001
+```
+
+平台入口仍為 `backend/app/main.py`；專案入口為 `projects/system-monitor/backend/src/main.py`，平台整合直接載入 `src/plugin.py`。兩種方式提供相同專案 API，不會在 API 程序中啟動採集器。
+
+macOS／Linux 的背景採集器指令（同樣從儲存庫根目錄執行）：
+
+```bash
+PYTHONPATH=projects/system-monitor/backend backend/.venv/bin/python -m src.collector.metrics_collector
+```
+
 
 The System Monitor collector is a separate process. From the repository root in PowerShell it can be started for a local database, but its file lock uses Linux `fcntl.flock` and will not take that lock on Windows:
 
 ```powershell
 $env:PYTHONPATH = "projects\system-monitor\backend"
-.\backend\.venv\Scripts\python.exe -m system_monitor.collector.metrics_collector
+.\backend\.venv\Scripts\python.exe -m src.collector.metrics_collector
 ```
 
 The default database path is `backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` overrides it. Windows does not provide systemd or `flock`.
@@ -144,7 +187,7 @@ From the repository root in PowerShell:
 .\backend\.venv\Scripts\python.exe -m pytest -v
 ```
 
-The root `pytest.ini` collects `backend/tests` and tests under `projects/`. `conftest.py` adds each project's `backend/` directory to the Python path.
+The root `pytest.ini` collects `backend/tests` and tests under `projects/`. `conftest.py` exposes project test helpers; those helpers use the same isolated modules that the platform loads, avoiding duplicate sampling state.
 
 The collector lock test is skipped on Windows because it requires Linux `fcntl.flock`. That test is still part of the suite. Do not treat a skip as a pass.
 
@@ -176,17 +219,13 @@ Do not edit `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/router/r
 | --- | --- | --- |
 | GET | `/api/health` | Platform. Body includes `status` and `version`. |
 | GET | `/api/system-monitor/overview` | System Monitor |
-| GET | `/api/system-monitor/system` | System Monitor |
-| GET | `/api/system-monitor/cpu` | System Monitor |
-| GET | `/api/system-monitor/memory` | System Monitor |
-| GET | `/api/system-monitor/disks` | System Monitor |
-| GET | `/api/system-monitor/network` | System Monitor |
 | GET | `/api/system-monitor/history?range=15m` | System Monitor. `range` is `15m`, `1h`, `24h`, or `7d`. |
-| GET | `/api/system-monitor/services` | System Monitor |
 | GET | `/api/system-monitor/feature-health` | System Monitor. 實際功能健康報告；`force=true` 略過報告快取。 |
 | GET | `/api/project-showcase/info` | Project Showcase |
 
-The same System Monitor paths are also mounted at `/api/overview`, `/api/system`, `/api/cpu`, `/api/memory`, `/api/disks`, `/api/network`, `/api/history`, `/api/services`, and `/api/feature-health`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
+The same System Monitor paths are also mounted at `/api/overview`, `/api/history`, and `/api/feature-health`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
+
+`/overview` contains only `cpu`, `memory`, `network`, `gpu`, and `disk_io`. Host identity and disk-capacity collection have been removed. Individual metric endpoints are no longer exposed; live metric reads use `/overview`.
 
 ### System Monitor 功能健康檢查
 
@@ -210,7 +249,7 @@ The collector unit in `deploy/systemd/a7las-metrics-collector.service` keeps the
 ```text
 WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
 Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/metrics.db
-ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m system_monitor.collector.metrics_collector
+ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector.metrics_collector
 ```
 
 The interpreter remains the shared virtual environment. The working directory puts `system_monitor` on Python's module path. The unit does not change the 30-second sample interval, the SQLite schema, the 7-day retention rule, or the `A7LAS_METRICS_DB_PATH` value. Those behaviors live in the collector code and the environment variable.
@@ -235,7 +274,6 @@ Cursor AI Coding Agent implemented the module loader, the System Monitor move, a
 - Settings is a shell placeholder. It does not save preferences.
 - There is no authentication, alerting, or container monitoring.
 - CORS allows `GET` from `http://localhost:5173` only.
-- Service inventory reads systemd on Linux. Other platforms do not provide that inventory.
 - Windows cannot run this repository's systemd unit or `fcntl.flock`. The collector lock test is skipped there.
 - The collector unit in this repository was updated. A live Linux service was not reloaded from this workspace.
 - The repository root contains a file named `exit`. It is a saved diff dump from commit `d2ed581`. It is not part of the application.

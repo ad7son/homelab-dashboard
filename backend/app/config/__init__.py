@@ -1,6 +1,6 @@
 """Platform configuration.
 
-Project-specific settings, including monitored systemd units, live in the
+Project-specific settings live in the
 owning project package.
 """
 

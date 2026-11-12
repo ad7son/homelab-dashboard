@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 import sqlite3
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from system_monitor.db.metrics_database import (
-    ENV_METRICS_DB_PATH,
-    MetricSampleRecord,
-    connect_metrics_database,
-    insert_metric_sample,
-)
+ENV_METRICS_DB_PATH = monitor_module('history.database').ENV_METRICS_DB_PATH
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
 from app.main import app
-from system_monitor.services import history_service
+query = monitor_module('history.query')
 
 client = TestClient(app)
 
@@ -54,7 +54,7 @@ def test_history_null_fields_serialize_as_json_null(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now_ms = 2_000_000_000_000
-    monkeypatch.setattr(history_service.time, "time", lambda: now_ms / 1000)
+    monkeypatch.setattr(query.time, "time", lambda: now_ms / 1000)
 
     connection = connect_metrics_database(history_db)
     try:
@@ -88,7 +88,7 @@ def test_history_db_failure_returns_503_without_raw_detail(
     def _raise_db_error(*_args, **_kwargs):
         raise sqlite3.OperationalError("disk I/O error")
 
-    monkeypatch.setattr(history_service, "connect_metrics_database", _raise_db_error)
+    monkeypatch.setattr(query, "connect_metrics_database", _raise_db_error)
 
     response = client.get("/api/history?range=15m")
     assert response.status_code == 503
@@ -110,7 +110,7 @@ def test_history_24h_response_is_downsampled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now_ms = 3_000_000_000_000
-    monkeypatch.setattr(history_service.time, "time", lambda: now_ms / 1000)
+    monkeypatch.setattr(query.time, "time", lambda: now_ms / 1000)
 
     connection = connect_metrics_database(history_db)
     try:
@@ -152,7 +152,7 @@ def test_history_7d_response_is_downsampled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now_ms = 4_000_000_000_000
-    monkeypatch.setattr(history_service.time, "time", lambda: now_ms / 1000)
+    monkeypatch.setattr(query.time, "time", lambda: now_ms / 1000)
 
     connection = connect_metrics_database(history_db)
     try:
@@ -205,7 +205,7 @@ def test_history_1h_response_remains_raw(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now_ms = 5_000_000_000_000
-    monkeypatch.setattr(history_service.time, "time", lambda: now_ms / 1000)
+    monkeypatch.setattr(query.time, "time", lambda: now_ms / 1000)
 
     connection = connect_metrics_database(history_db)
     try:

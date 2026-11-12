@@ -484,7 +484,6 @@ function rejectDuplicates(manifests: readonly ProjectManifest[]): void {
   const ids = new Map<string, string>()
   const routes = new Map<string, string>()
   const prefixes = new Map<string, string>()
-  const packages = new Map<string, string>()
   for (const manifest of manifests) {
     claim(ids, manifest.id, manifest.id, 'id')
     claim(routes, manifest.routeBase, manifest.id, 'routeBase')
@@ -495,7 +494,6 @@ function rejectDuplicates(manifests: readonly ProjectManifest[]): void {
     if (manifest.legacyApiPrefix != null) {
       claim(prefixes, manifest.legacyApiPrefix, manifest.id, 'legacyApiPrefix')
     }
-    claim(packages, manifest.pythonPackage, manifest.id, 'pythonPackage')
   }
 }
 

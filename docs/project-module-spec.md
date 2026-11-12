@@ -23,10 +23,10 @@ projects/{project-id}/
 
 `project-id` is lowercase kebab-case and must equal `project.json` `id`. Example: `system-monitor`.
 
-`pythonPackage` is a separate Python identifier. A hyphenated directory cannot be imported, so `system-monitor` uses the package name `system_monitor`:
+`pythonPackage` is a Python identifier naming the directory under `backend/`. System Monitor uses `src`, with no additional `app/` or project-named package underneath:
 
 ```text
-projects/system-monitor/backend/system_monitor/plugin.py
+projects/system-monitor/backend/src/plugin.py
 ```
 
 Directories under `projects/` that do not contain `project.json` are ignored.
@@ -39,12 +39,14 @@ Schema version is the integer `1`. Unknown fields are rejected. `enabled` defaul
 {
   "schemaVersion": 1,
   "id": "system-monitor",
-  "name": "Home Lab",
+  "name": "System Monitor",
   "description": "Real-time system monitoring dashboard",
-  "pythonPackage": "system_monitor",
+  "pythonPackage": "src",
   "routeBase": "/system-monitor",
   "apiPrefix": "/api/system-monitor",
-  "legacyRouteBases": ["/homelab"],
+  "legacyRouteBases": [
+    "/homelab"
+  ],
   "legacyApiPrefix": "/api",
   "enabled": true,
   "nav": {
@@ -53,16 +55,10 @@ Schema version is the integer `1`. Unknown fields are rejected. `enabled` defaul
     "items": [
       {
         "path": "",
-        "label": "Home Lab",
-        "icon": "server",
-        "end": true,
-        "documentTitle": "Home Lab"
-      },
-      {
-        "path": "services",
-        "label": "Services",
-        "icon": "boxes",
-        "documentTitle": "Services"
+        "label": "System Monitor",
+        "icon": "activity",
+        "end": false,
+        "documentTitle": "System Monitor"
       }
     ]
   }
@@ -76,10 +72,10 @@ Rules:
 - `routeBase` is an absolute kebab-case path such as `/system-monitor`. `/` and `/settings` are reserved by the shell, including paths under `/settings/`.
 - `apiPrefix` starts with `/api/` and cannot be `/api`. `/api/health` is reserved by the platform.
 - `routeBase`, `apiPrefix`, and nav paths reject `\`, `%`, NUL, and `.` or `..` segments.
-- Nav `path` is relative. An empty string is the project index page. `/services` is invalid; `services` is valid.
+- Nav `path` is relative. An empty string is the project index page. `/details` is invalid; `details` is valid.
 - `icon` must be one of: `activity`, `bot`, `boxes`, `database`, `folder`, `layout-dashboard`, `server`.
 - `nav.items` contains at least one item, and paths inside one manifest are unique.
-- Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, or `pythonPackage`.
+- Enabled projects cannot share `id`, `routeBase`, or `apiPrefix`. Package names may repeat because each project has an isolated import namespace.
 - `legacyRouteBases` is an optional array of absolute paths. Each entry uses the same rules as `routeBase`. A legacy path must not equal or nest inside that project's `routeBase`, and it must not collide with another project's `routeBase` or legacy path. The shell redirects each legacy path, including child paths, to the project's `routeBase`.
 - `legacyApiPrefix` is optional. The value `/api` is allowed only when `id` is `system-monitor`, so an existing client can keep calling `/api/overview` and the other monitoring paths. Any other project must use a namespaced prefix, and no project may use `legacyApiPrefix` to claim `/api/health`. The loader calls `build_router()` again and mounts that second router at `legacyApiPrefix`. The plugin must not hardcode either prefix.
 
@@ -97,14 +93,14 @@ import type { ProjectFrontendModule } from '@shell/modules/types'
 const module: ProjectFrontendModule = {
   routes: [
     { index: true, element: <OverviewPage /> },
-    { path: 'services', element: <ServicesPage /> },
+    { path: 'health/:projectId', element: <ProjectHealthPage /> },
   ],
 }
 
 export default module
 ```
 
-Paths are relative to `routeBase`, so the example above is `/system-monitor` and `/system-monitor/services`.
+Paths are relative to `routeBase`, so the example above matches `/system-monitor` and `/system-monitor/health/system-monitor`.
 
 The shell alias `@shell` points at `frontend/src`. Project code may import shared layout primitives from `@shell/...`. It must not import the shell router, `AppShell`, or `Sidebar`, and it must not create its own `createBrowserRouter`.
 
@@ -125,9 +121,9 @@ def build_router() -> APIRouter:
     return router
 ```
 
-`build_router()` must return a new FastAPI `APIRouter` on every call. Route paths inside that router are relative (`/overview`, `/services`). The loader mounts one router at `apiPrefix`. When `legacyApiPrefix` is set, it calls `build_router()` again and mounts that second router at the legacy prefix. The plugin does not hardcode `/api` or `/api/system-monitor`.
+`build_router()` must return a new FastAPI `APIRouter` on every call. Route paths inside that router are relative (`/overview`, `/feature-health`). The loader mounts one router at `apiPrefix`. When `legacyApiPrefix` is set, it calls `build_router()` again and mounts that second router at the legacy prefix. The plugin does not hardcode `/api` or `/api/system-monitor`.
 
-The loader adds that project's `backend/` directory to `sys.path` and imports `{pythonPackage}.plugin`. Package names must be unique. If the same package is already imported from another location, loading fails. A failed batch removes the modules it imported and the `sys.path` entries it added.
+The loader imports `{pythonPackage}.plugin` inside an isolated namespace derived from the project id and resolved path. It does not add project backends to `sys.path`; project-local imports should be relative. Multiple projects can use `src` or `app` without colliding with one another or the platform `app`. A failed batch removes only newly imported modules in the affected project namespaces.
 
 Plugin route paths must stay under `apiPrefix`. A path such as `/../health` is rejected. Only HTTP routes are accepted.
 
@@ -143,7 +139,7 @@ Project routes are mounted only at that project's `apiPrefix`:
 |---|---|---|
 | `apiPrefix` | `/api/system-monitor` | prefix owned by the loader |
 | router path | `/overview` | `GET /api/system-monitor/overview` |
-| router path | `/services` | `GET /api/system-monitor/services` |
+| router path | `/feature-health` | `GET /api/system-monitor/feature-health` |
 
 A project cannot choose an `apiPrefix` of `/api` or `/api/health`. `legacyApiPrefix: "/api"` is the one exception, and only `system-monitor` may set it. The loader computes every `HTTP method + full path` for both mounts and rejects duplicates, including duplicates against routes already on the FastAPI app such as `GET /api/health`. It also rejects two different prefixes that expand to the same path, such as `/api/team` + `/alpha/ping` and `/api/team/alpha` + `/ping`.
 
@@ -278,20 +274,22 @@ This is not a hot-plug system. A running server does not pick up a new folder un
 
 ### Validation rules
 
-Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, `pythonPackage`, or a final `HTTP method + path`. `id` must equal the directory name, so two folders cannot claim the same id. Duplicate route bases and API prefixes are rejected. A plugin path that escapes its prefix, including a path that would cover `GET /api/health`, is rejected. If one project in the batch fails, none of that batch is mounted.
+Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, or a final `HTTP method + path`. Their `pythonPackage` values may match. `id` must equal the directory name, so two folders cannot claim the same id. Duplicate route bases and API prefixes are rejected. A plugin path that escapes its prefix, including a path that would cover `GET /api/health`, is rejected. If one project in the batch fails, none of that batch is mounted.
 
 ## 9. Current Development Status
 
 Two modules are registered from `projects/`:
 
-- `system-monitor` — Home Lab at `/system-monitor` and Services at `/system-monitor/services`. `/homelab` and `/homelab/services` redirect there because `legacyRouteBases` contains `/homelab`. Monitoring APIs are mounted at `/api/system-monitor/...` and, for this project only, at the previous `/api/...` paths.
+- `system-monitor` — System Monitor at `/system-monitor` and project health details at `/system-monitor/health/system-monitor`. `/homelab` redirects to the project base, preserving child paths. Monitoring APIs are mounted at `/api/system-monitor/...` and, for this project only, at the previous `/api/...` paths.
 - `project-showcase` — one page at `/project-showcase` and `GET /api/project-showcase/info`. It has no legacy aliases.
 
 `GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
+
+System Monitor 後端原始碼位於 `projects/system-monitor/backend/src/`，按功能分成 `machine/`、`history/`、`health/`、`collector/`，各自集中資料模型與實作。`plugin.py` 直接宣告三組 API；主機採集可同時供總覽、採集器與健康檢查呼叫。SQL 集中於 `history/database.py`，採集器診斷旁檔集中於 `collector/status.py`。`project.json` 設定 `pythonPackage: "src"`；獨立 API 入口為 `src.main:app`，採集器入口為 `python -m src.collector.metrics_collector`。平台掛載的 API 路徑與資料格式不變。
 
 The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. Schema v2 adds nullable GPU usage and disk read/write rate columns and migrates v1 databases transactionally without deleting existing samples. Older samples retain null for the new metrics. The 7-day raw retention window and 30-second collector interval are unchanged. Restart the API and collector together after upgrading.
 
 Linux `fcntl.flock` is imported only when the collector takes its process lock. The lock test is skipped on Windows. The collector implementation was not replaced with a Windows lock.
 
-`deploy/systemd/a7las-metrics-collector.service` in this repository now uses working directory `/srv/homelab-dashboard/projects/system-monitor/backend` and starts `/srv/homelab-dashboard/backend/.venv/bin/python -m system_monitor.collector.metrics_collector`. Those paths follow the unit file that was already in the repository. Editing the unit file does not reload a live server. A Linux administrator still has to copy the unit and run `systemctl daemon-reload` before restarting the service.
+`deploy/systemd/a7las-metrics-collector.service` in this repository now uses working directory `/srv/homelab-dashboard/projects/system-monitor/backend` and starts `/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector.metrics_collector`. Those paths follow the unit file that was already in the repository. Editing the unit file does not reload a live server. A Linux administrator still has to copy the unit and run `systemctl daemon-reload` before restarting the service.
 

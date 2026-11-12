@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 from pathlib import Path
 
-from system_monitor.db.metrics_database import (
-    MetricSampleRecord,
-    connect_metrics_database,
-    count_metric_samples,
-    delete_metric_samples_before,
-    fetch_metric_sample,
-    insert_metric_sample,
-)
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+count_metric_samples = monitor_module('history.database').count_metric_samples
+delete_metric_samples_before = monitor_module('history.database').delete_metric_samples_before
+fetch_metric_sample = monitor_module('history.database').fetch_metric_sample
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
 
 
 def _sample(

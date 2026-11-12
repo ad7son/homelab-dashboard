@@ -1,12 +1,8 @@
-import platform
-from pathlib import Path
-
 import psutil
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from system_monitor.services import system_service
 
 client = TestClient(app)
 
@@ -16,76 +12,14 @@ def api_client() -> TestClient:
     return client
 
 
-@pytest.fixture(autouse=True)
-def _reset_system_cache() -> None:
-    """Clear the cached static info so each test can mock independently."""
-    system_service._static_cache = None
-
-
 # ---------------------------------------------------------------------------
-# System endpoint
+# CPU collection through overview
 # ---------------------------------------------------------------------------
 
-def test_system_returns_200(api_client: TestClient) -> None:
-    response = api_client.get("/api/system")
+def test_overview_cpu_has_valid_usage_and_cores(api_client: TestClient) -> None:
+    response = api_client.get("/api/overview")
     assert response.status_code == 200
-    data = response.json()
-    assert "hostname" in data
-    assert "uptime" in data
-    assert data["uptime"] > 0
-    assert isinstance(data["operating_system"], str)
-    assert isinstance(data["kernel"], str)
-    assert isinstance(data["architecture"], str)
-
-
-def test_system_kernel_is_platform_release(api_client: TestClient) -> None:
-    """kernel must equal platform.release(), not the verbose build string."""
-    response = api_client.get("/api/system")
-    data = response.json()
-    assert data["kernel"] == platform.release()
-    assert data["architecture"] == platform.machine()
-
-
-def test_system_reads_os_release_when_present(
-    api_client: TestClient,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When os-release exists, operating_system and os_version come from it."""
-    fake_os_release = tmp_path / "os-release"
-    fake_os_release.write_text(
-        'NAME="Ubuntu"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nID=ubuntu\n'
-    )
-    monkeypatch.setattr(system_service, "_OS_RELEASE_PATH", str(fake_os_release))
-
-    response = api_client.get("/api/system")
-    data = response.json()
-    assert data["operating_system"] == "Ubuntu"
-    assert data["os_version"] == "22.04.3 LTS (Jammy Jellyfish)"
-
-
-def test_system_fallback_without_os_release(
-    api_client: TestClient,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without os-release, fall back to platform.system()."""
-    missing_path = tmp_path / "no-such-os-release"
-    monkeypatch.setattr(system_service, "_OS_RELEASE_PATH", str(missing_path))
-
-    response = api_client.get("/api/system")
-    data = response.json()
-    assert data["operating_system"] == platform.system()
-
-
-# ---------------------------------------------------------------------------
-# CPU endpoint
-# ---------------------------------------------------------------------------
-
-def test_cpu_returns_200(api_client: TestClient) -> None:
-    response = api_client.get("/api/cpu")
-    assert response.status_code == 200
-    data = response.json()
+    data = response.json()["cpu"]
     assert 0 <= data["usage_percent"] <= 100
     assert data["physical_cores"] > 0
     assert data["logical_cores"] > 0
@@ -95,16 +29,16 @@ def test_cpu_temperature_null_when_sensors_raise_oserror(
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OS-level temperature read failure must not fail /api/cpu."""
+    """OS-level temperature read failure must not fail /api/overview."""
 
     def raise_oserror() -> None:
         raise OSError("Permission denied")
 
     monkeypatch.setattr(psutil, "sensors_temperatures", raise_oserror, raising=False)
 
-    response = api_client.get("/api/cpu")
+    response = api_client.get("/api/overview")
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["cpu"]
     assert data["temperature"] is None
     assert 0 <= data["usage_percent"] <= 100
 
@@ -113,55 +47,40 @@ def test_cpu_frequency_null_when_cpu_freq_raises_oserror(
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OS-level frequency read failure must not fail /api/cpu."""
+    """OS-level frequency read failure must not fail /api/overview."""
 
     def raise_oserror() -> None:
         raise OSError("Permission denied")
 
     monkeypatch.setattr(psutil, "cpu_freq", raise_oserror)
 
-    response = api_client.get("/api/cpu")
+    response = api_client.get("/api/overview")
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["cpu"]
     assert data["frequency"] is None
     assert 0 <= data["usage_percent"] <= 100
 
 
 # ---------------------------------------------------------------------------
-# Memory endpoint
+# Memory collection through overview
 # ---------------------------------------------------------------------------
 
-def test_memory_returns_200(api_client: TestClient) -> None:
-    response = api_client.get("/api/memory")
+def test_overview_memory_includes_swap(api_client: TestClient) -> None:
+    response = api_client.get("/api/overview")
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["memory"]
     assert data["total"] > 0
     assert "swap" in data
 
 
 # ---------------------------------------------------------------------------
-# Disks endpoint
+# Network collection through overview
 # ---------------------------------------------------------------------------
 
-def test_disks_returns_200(api_client: TestClient) -> None:
-    response = api_client.get("/api/disks")
+def test_overview_network_includes_rates(api_client: TestClient) -> None:
+    response = api_client.get("/api/overview")
     assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-    for disk in data:
-        assert "mount_point" in disk
-        assert "total_bytes" in disk
-        assert "usage_percent" in disk
-
-
-# ---------------------------------------------------------------------------
-# Network endpoint
-# ---------------------------------------------------------------------------
-
-def test_network_returns_200(api_client: TestClient) -> None:
-    response = api_client.get("/api/network")
-    assert response.status_code == 200
-    data = response.json()
+    data = response.json()["network"]
     assert "download_rate" in data
     assert "upload_rate" in data
 
@@ -174,13 +93,12 @@ def test_overview_returns_200(api_client: TestClient) -> None:
     response = api_client.get("/api/overview")
     assert response.status_code == 200
     data = response.json()
-    assert "system" in data
     assert "cpu" in data
     assert "memory" in data
-    assert "disks" in data
     assert "network" in data
     assert "gpu" in data
     assert "disk_io" in data
+    assert set(data) == {"cpu", "memory", "network", "gpu", "disk_io"}
 
 
 def test_overview_cpu_percent_valid(api_client: TestClient) -> None:
@@ -196,9 +114,9 @@ def test_overview_memory_total_positive(api_client: TestClient) -> None:
 
 
 def test_network_rates_after_second_sample(api_client: TestClient) -> None:
-    api_client.get("/api/network")
-    response = api_client.get("/api/network")
-    data = response.json()
+    api_client.get("/api/overview")
+    response = api_client.get("/api/overview")
+    data = response.json()["network"]
     if data["interface"] is not None:
         assert data["download_rate"] is not None or data["upload_rate"] is not None or (
             data["download_rate"] == 0 and data["upload_rate"] == 0

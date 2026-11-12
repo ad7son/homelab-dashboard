@@ -7,10 +7,13 @@ batch is mounted.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+from importlib.machinery import ModuleSpec
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Iterator
 
 from fastapi import APIRouter, FastAPI
@@ -32,22 +35,29 @@ class LoadedProjectRouter:
 
 @dataclass
 class _ImportSession:
-    """sys.path and sys.modules changes owned by one load attempt."""
+    """記錄本次觸及的專案命名空間；失敗只撤回新載入的模組。"""
 
-    added_paths: list[str]
-    packages: list[str]
+    namespaces: list[str]
+    modules_before: set[str]
 
     def rollback(self) -> None:
-        for package in self.packages:
-            prefix = package + "."
-            for name in list(sys.modules):
-                if name == package or name.startswith(prefix):
-                    del sys.modules[name]
-        for entry in self.added_paths:
-            while entry in sys.path:
-                sys.path.remove(entry)
-        self.added_paths.clear()
-        self.packages.clear()
+        for name in list(sys.modules):
+            if name in self.modules_before:
+                continue
+            if any(name == namespace or name.startswith(namespace + ".") for namespace in self.namespaces):
+                del sys.modules[name]
+
+
+def project_package_name(project_dir: Path, package: str) -> str:
+    """為專案套件建立獨立匯入名稱，不占用平台 app 或其他專案的同名套件。
+
+    專案 id 供辨識，實際路徑摘要區分不同專案根目錄中的同名專案。
+    實體目錄不需配合此名稱改名；專案內的相對匯入可原樣使用。
+    """
+    directory = Path(project_dir).resolve()
+    digest = hashlib.sha256(str(directory).encode()).hexdigest()[:12]
+    project_id = directory.name.replace("-", "_")
+    return f"_a7las_project_{project_id}_{digest}.{package}"
 
 
 def default_repository_root() -> Path:
@@ -63,8 +73,7 @@ def discover_project_manifests(projects_root: Path) -> list[ProjectManifest]:
     """Validate every manifest under ``projects_root``.
 
     Directories without ``project.json`` are ignored. ``enabled: false``
-    manifests are validated and then omitted. Duplicate ``id``, ``routeBase``,
-    ``apiPrefix``, and ``pythonPackage`` values among enabled projects raise
+    manifests are validated and then omitted. Duplicate ``id``, ``routeBase``, and ``apiPrefix`` values among enabled projects raise
     ``ProjectModuleError`` and return nothing.
     """
     projects_root = Path(projects_root)
@@ -97,15 +106,13 @@ def register_project_routers(
     app: FastAPI,
     projects_root: Path,
 ) -> list[ProjectManifest]:
-    """Mount every enabled project router, or leave ``app`` unchanged.
+    """掛載全部啟用專案；驗證或掛載失敗時保留原本路由與已存在的模組。
 
-    Plugin modules imported during a failed attempt are removed from
-    ``sys.modules`` and their backend directories are removed from ``sys.path``.
-    Successful loads keep those entries so the mounted routers stay importable.
+    各專案可使用相同的 src 或 app 套件名稱，載入過程不修改 sys.path。
     """
     projects_root = Path(projects_root)
     manifests = discover_project_manifests(projects_root)
-    session = _ImportSession(added_paths=[], packages=[])
+    session = _ImportSession(namespaces=[], modules_before=set(sys.modules))
     loaded: list[LoadedProjectRouter] = []
     try:
         for manifest in manifests:
@@ -125,7 +132,7 @@ def register_project_routers(
                     LoadedProjectRouter(
                         manifest=manifest,
                         project_dir=project_dir,
-                        router=_build_additional_router(manifest),
+                        router=_build_additional_router(project_dir, manifest),
                         mount_prefix=manifest.legacy_api_prefix,
                     )
                 )
@@ -157,7 +164,6 @@ def _reject_duplicate_fields(manifests: list[ProjectManifest]) -> None:
     seen_ids: dict[str, str] = {}
     seen_routes: dict[str, str] = {}
     seen_prefixes: dict[str, str] = {}
-    seen_packages: dict[str, str] = {}
     for manifest in manifests:
         _remember_unique(seen_ids, manifest.id, manifest.id, "id")
         _remember_unique(
@@ -177,12 +183,7 @@ def _reject_duplicate_fields(manifests: list[ProjectManifest]) -> None:
                 manifest.id,
                 "legacyApiPrefix",
             )
-        _remember_unique(
-            seen_packages,
-            manifest.python_package,
-            manifest.id,
-            "pythonPackage",
-        )
+
 
 
 def _remember_unique(
@@ -215,23 +216,21 @@ def _import_build_router(
     manifest: ProjectManifest,
 ) -> APIRouter:
     backend_dir = (project_dir / "backend").resolve()
-    package = manifest.python_package
+    package = project_package_name(project_dir, manifest.python_package)
+    namespace = package.rpartition(".")[0]
     module_name = f"{package}.plugin"
-    existing = sys.modules.get(package)
-    if existing is not None:
-        existing_file = getattr(existing, "__file__", None)
-        expected_dir = backend_dir / package
-        if existing_file is None or Path(existing_file).resolve().parent != expected_dir:
-            raise ProjectModuleError(
-                f"project '{manifest.id}': Python package '{package}' is already "
-                "loaded from a different location"
-            )
-
-    path_entry = str(backend_dir)
-    if path_entry not in sys.path:
-        sys.path.insert(0, path_entry)
-        session.added_paths.append(path_entry)
-    session.packages.append(package)
+    session.namespaces.append(namespace)
+    existing = sys.modules.get(namespace)
+    if existing is None:
+        # namespace 只提供這個專案的 backend 搜尋位置，不執行其他專案程式。
+        existing = ModuleType(namespace)
+        existing.__package__ = namespace
+        existing.__path__ = [str(backend_dir)]
+        existing.__spec__ = ModuleSpec(namespace, loader=None, is_package=True)
+        existing.__spec__.submodule_search_locations = existing.__path__
+        sys.modules[namespace] = existing
+    elif list(getattr(existing, "__path__", [])) != [str(backend_dir)]:
+        raise ProjectModuleError(f"project '{manifest.id}': namespace belongs to a different location")
     try:
         module = importlib.import_module(module_name)
     except ProjectModuleError:
@@ -242,7 +241,7 @@ def _import_build_router(
         ) from exc
 
     loaded_file = getattr(module, "__file__", None)
-    if loaded_file is None or Path(loaded_file).resolve().parent != backend_dir / package:
+    if loaded_file is None or Path(loaded_file).resolve().parent != backend_dir / manifest.python_package:
         raise ProjectModuleError(
             f"project '{manifest.id}': imported {module_name} from an unexpected location"
         )
@@ -264,9 +263,9 @@ def _import_build_router(
     return router
 
 
-def _build_additional_router(manifest: ProjectManifest) -> APIRouter:
+def _build_additional_router(project_dir: Path, manifest: ProjectManifest) -> APIRouter:
     """Call build_router() again so a legacy prefix gets its own parent router."""
-    module = sys.modules.get(f"{manifest.python_package}.plugin")
+    module = sys.modules.get(f"{project_package_name(project_dir, manifest.python_package)}.plugin")
     if module is None:
         raise ProjectModuleError(
             f"project '{manifest.id}': plugin was not imported before the legacy mount"

@@ -43,7 +43,7 @@ export interface ProjectRouteDefinition {
 /**
  * Default export of projects/{id}/frontend/index.tsx.
  * A project may expose several pages, for example /system-monitor
- * and /system-monitor/services.
+ * and /system-monitor/health/system-monitor.
  */
 export interface ProjectFrontendModule {
   routes: ProjectRouteDefinition[]

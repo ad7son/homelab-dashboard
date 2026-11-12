@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from monitor_backend import module as monitor_module
+
 from pathlib import Path
 
-from system_monitor.db.metrics_database import (
-    MetricSampleRecord,
-    connect_metrics_database,
-    insert_metric_sample,
-    read_metric_samples,
-)
+connect_metrics_database = monitor_module('history.database').connect_metrics_database
+insert_metric_sample = monitor_module('history.database').insert_metric_sample
+read_metric_samples = monitor_module('history.database').read_metric_samples
+MetricSampleRecord = monitor_module('history.models').MetricSampleRecord
 
 
 def _sample(
@@ -80,3 +80,36 @@ def test_read_metric_samples_preserves_nulls_and_empty_range(tmp_path: Path) -> 
         assert read_metric_samples(connection, 20_000, 30_000) == []
     finally:
         connection.close()
+
+
+def test_read_only_connection_rejects_writes_and_preserves_samples(tmp_path: Path) -> None:
+    """健康探測共用連線入口後，仍必須確實受到 SQLite 唯讀限制。"""
+    import sqlite3
+    import pytest
+
+    path = tmp_path / "metrics.db"
+    connection = connect_metrics_database(path)
+    insert_metric_sample(connection, _sample(1000))
+    connection.close()
+    connection = connect_metrics_database(path, read_only=True)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            connection.execute("DELETE FROM metric_samples")
+        assert len(read_metric_samples(connection, 0, 2000)) == 1
+    finally:
+        connection.close()
+
+
+def test_latest_metric_sample_preserves_latest_zeroes_and_missing_values(tmp_path: Path) -> None:
+    latest_metric_sample = monitor_module('history.database').latest_metric_sample
+
+    path = tmp_path / "metrics.db"
+    connection = connect_metrics_database(path)
+    insert_metric_sample(connection, _sample(1000))
+    insert_metric_sample(connection, _sample(2000, cpu_usage_percent=0, cpu_temperature_celsius=None))
+    connection.close()
+    latest = latest_metric_sample(path)
+    assert latest["timestamp_ms"] == 2000
+    assert latest["cpu_usage_percent"] == 0
+    assert latest["cpu_temperature_celsius"] is None
+    assert latest["gpu_usage_percent"] is None
