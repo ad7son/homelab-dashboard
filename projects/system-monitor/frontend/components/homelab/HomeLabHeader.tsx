@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { Activity, RefreshCw } from 'lucide-react';
 import type { ConnectionStatus } from '../../types/system';
 import { formatClockTime } from '../../utils/format';
 import { PageHeader } from '@shell/components/layout/PageHeader';
@@ -37,7 +37,7 @@ export function HomeLabHeader({
         type="button"
         className="homelab-refresh-button homelab-refresh-icon-button"
         onClick={onRefresh}
-        aria-label="Refresh Monitor"
+        aria-label="Refresh System Monitor"
         title="Refresh all monitoring data"
       >
         <RefreshCw size={18} aria-hidden="true" />
@@ -46,6 +46,11 @@ export function HomeLabHeader({
   );
 
   return (
-    <PageHeader className="monitor-page-header" title={projectManifest.name} actions={actions} />
+    <PageHeader
+      className="monitor-page-header"
+      title={projectManifest.name}
+      icon={<Activity className="monitor-title-icon" size={28} strokeWidth={1.75} aria-hidden="true" />}
+      actions={actions}
+    />
   );
 }

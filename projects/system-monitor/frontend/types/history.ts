@@ -9,6 +9,9 @@ export interface HistoricalMetricSample {
   memory_usage_percent: number;
   network_download_bytes_per_second: number | null;
   network_upload_bytes_per_second: number | null;
+  gpu_usage_percent: number | null;
+  disk_read_bytes_per_second: number | null;
+  disk_write_bytes_per_second: number | null;
 }
 
 export interface HistoricalMetricsResponse {

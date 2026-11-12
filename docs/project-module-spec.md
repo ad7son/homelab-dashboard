@@ -108,7 +108,7 @@ Paths are relative to `routeBase`, so the example above is `/system-monitor` and
 
 The shell alias `@shell` points at `frontend/src`. Project code may import shared layout primitives from `@shell/...`. It must not import the shell router, `AppShell`, or `Sidebar`, and it must not create its own `createBrowserRouter`.
 
-`frontend/src/modules/loadProjects.ts` reads manifests with an eager Vite glob and page modules with a lazy glob. Both globs use forward slashes. The shell calls `loadDiscoveredProjects()` once, builds routes from `routeBase` and `nav.items`, and builds the Sidebar from `buildProjectNavigation()`. A manifest error is shown in the shell and logged. It does not remove Settings. `/` redirects to the first enabled project. Project pages stay behind `React.lazy` and a per-page error boundary.
+`frontend/src/modules/loadProjects.ts` reads manifests with an eager Vite glob and page modules with a lazy glob. Both globs use forward slashes. The shell calls `loadDiscoveredProjects()` once, mounts each module under `routeBase` and uses its exported `routes` for page matching, and builds the Sidebar from `nav.items` through `buildProjectNavigation()`. A manifest error is shown in the shell and logged. It does not remove Settings. `/` redirects to the first enabled project. Project routes stay behind `React.lazy` and an error boundary that resets when the path changes. Module routes may include detail paths such as `health/:projectId` without adding sidebar entries; unmatched module paths show the shell’s not-found page.
 
 Enabled projects must have `frontend/index.tsx`. Disabled projects are validated and then omitted.
 
@@ -289,7 +289,7 @@ Two modules are registered from `projects/`:
 
 `GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
 
-The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. The schema and the 7-day raw retention window are unchanged. The collector samples every 30 seconds.
+The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. Schema v2 adds nullable GPU usage and disk read/write rate columns and migrates v1 databases transactionally without deleting existing samples. Older samples retain null for the new metrics. The 7-day raw retention window and 30-second collector interval are unchanged. Restart the API and collector together after upgrading.
 
 Linux `fcntl.flock` is imported only when the collector takes its process lock. The lock test is skipped on Windows. The collector implementation was not replaced with a Windows lock.
 

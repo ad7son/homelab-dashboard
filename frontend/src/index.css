@@ -34,19 +34,20 @@
   --color-chart-cpu: #c5c7cc;
   --color-chart-temperature: #c5aa7e;
   --color-chart-memory: #a9b7a4;
+  --color-chart-gpu: #b8adc6;
   --color-chart-download: #a5b8c9;
   --color-chart-upload: #c6ab98;
 
   /* Semantic status colors */
-  --color-success-bg: #222d25;
-  --color-success-text: #b1c5b2;
-  --color-success-border: #425747;
-  --color-warning-bg: #332c20;
-  --color-warning-text: #d8be8d;
-  --color-warning-border: #78613c;
-  --color-danger-bg: #352523;
-  --color-danger-text: #dca9a2;
-  --color-danger-border: #80564f;
+  --color-success-bg: #193c2a;
+  --color-success-text: #75e5a3;
+  --color-success-border: #318457;
+  --color-warning-bg: #44351b;
+  --color-warning-text: #f3cd68;
+  --color-warning-border: #a48132;
+  --color-danger-bg: #482526;
+  --color-danger-text: #ff9299;
+  --color-danger-border: #b75059;
 
   /* Spacing */
   --space-xs: 0.25rem;

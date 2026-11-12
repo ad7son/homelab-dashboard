@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 ENV_METRICS_DB_PATH = "A7LAS_METRICS_DB_PATH"
 BUSY_TIMEOUT_MS = 5000
 
@@ -19,7 +20,10 @@ CREATE TABLE IF NOT EXISTS metric_samples (
     cpu_temperature_celsius REAL,
     memory_usage_percent REAL NOT NULL,
     network_download_bytes_per_second REAL,
-    network_upload_bytes_per_second REAL
+    network_upload_bytes_per_second REAL,
+    gpu_usage_percent REAL,
+    disk_read_bytes_per_second REAL,
+    disk_write_bytes_per_second REAL
 )
 """
 
@@ -30,8 +34,11 @@ INSERT INTO metric_samples (
     cpu_temperature_celsius,
     memory_usage_percent,
     network_download_bytes_per_second,
-    network_upload_bytes_per_second
-) VALUES (?, ?, ?, ?, ?, ?)
+    network_upload_bytes_per_second,
+    gpu_usage_percent,
+    disk_read_bytes_per_second,
+    disk_write_bytes_per_second
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -51,6 +58,9 @@ class MetricSampleRecord:
     memory_usage_percent: float
     network_download_bytes_per_second: Optional[float]
     network_upload_bytes_per_second: Optional[float]
+    gpu_usage_percent: Optional[float] = None
+    disk_read_bytes_per_second: Optional[float] = None
+    disk_write_bytes_per_second: Optional[float] = None
 
 
 def default_metrics_db_path() -> Path:
@@ -105,27 +115,46 @@ def _set_user_version(connection: sqlite3.Connection, version: int) -> None:
 def _configure_connection(connection: sqlite3.Connection) -> None:
     connection.row_factory = sqlite3.Row
     connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
-    connection.execute("PRAGMA journal_mode = WAL")
+    # 切換 journal mode 時，SQLite 可能不遵守 busy_timeout 而立即回報 BUSY。
+    # 只重試鎖定錯誤，以既有連線逾時作為重試期限，其他錯誤照常回報。
+    deadline = time.monotonic() + BUSY_TIMEOUT_MS / 1000
+    while True:
+        try:
+            connection.execute("PRAGMA journal_mode = WAL")
+            break
+        except sqlite3.OperationalError as exc:
+            code = getattr(exc, "sqlite_errorcode", 0) & 0xFF
+            remaining = deadline - time.monotonic()
+            if code not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED) or remaining <= 0:
+                raise
+            time.sleep(min(0.01, remaining))
 
 
 def initialize_metrics_database(connection: sqlite3.Connection) -> None:
-    """Create schema when needed. Idempotent for schema version 1."""
-    version = _get_user_version(connection)
+    """建立 v2 或原地升級 v1；新增欄位允許 NULL，既有歷史資料不補零。
 
-    if version == 0:
-        connection.execute(_CREATE_METRIC_SAMPLES_SQL)
+    取得寫入鎖後再次確認版本，避免 API 與 collector 同時升級時重複加欄位。
+    欄位變更與版本更新放在同一交易內，任一步失敗都回滾。
+    """
+    if _get_user_version(connection) == CURRENT_SCHEMA_VERSION:
+        return
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        version = _get_user_version(connection)
+        if version == CURRENT_SCHEMA_VERSION:
+            return
+        if version not in (0, 1):
+            raise UnsupportedSchemaVersionError(
+                f"Unsupported metrics database schema version {version}; "
+                f"expected 0, 1 or {CURRENT_SCHEMA_VERSION}."
+            )
+        if version == 0:
+            connection.execute(_CREATE_METRIC_SAMPLES_SQL)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(metric_samples)")}
+        for column in ("gpu_usage_percent", "disk_read_bytes_per_second", "disk_write_bytes_per_second"):
+            if column not in columns:
+                connection.execute(f"ALTER TABLE metric_samples ADD COLUMN {column} REAL")
         _set_user_version(connection, CURRENT_SCHEMA_VERSION)
-        connection.commit()
-        return
-
-    if version == CURRENT_SCHEMA_VERSION:
-        # Existing v1 DB: leave schema and data intact.
-        return
-
-    raise UnsupportedSchemaVersionError(
-        f"Unsupported metrics database schema version {version}; "
-        f"expected {CURRENT_SCHEMA_VERSION} or uninitialized (0)."
-    )
 
 
 def connect_metrics_database(
@@ -162,6 +191,9 @@ def insert_metric_sample(
                     sample.memory_usage_percent,
                     sample.network_download_bytes_per_second,
                     sample.network_upload_bytes_per_second,
+                    sample.gpu_usage_percent,
+                    sample.disk_read_bytes_per_second,
+                    sample.disk_write_bytes_per_second,
                 ),
             )
     except sqlite3.IntegrityError as exc:
@@ -200,7 +232,10 @@ def fetch_metric_sample(
             cpu_temperature_celsius,
             memory_usage_percent,
             network_download_bytes_per_second,
-            network_upload_bytes_per_second
+            network_upload_bytes_per_second,
+            gpu_usage_percent,
+            disk_read_bytes_per_second,
+            disk_write_bytes_per_second
         FROM metric_samples
         WHERE timestamp_ms = ?
         """,
@@ -231,7 +266,10 @@ def read_metric_samples(
             cpu_temperature_celsius,
             memory_usage_percent,
             network_download_bytes_per_second,
-            network_upload_bytes_per_second
+            network_upload_bytes_per_second,
+            gpu_usage_percent,
+            disk_read_bytes_per_second,
+            disk_write_bytes_per_second
         FROM metric_samples
         WHERE timestamp_ms >= ?
           AND timestamp_ms <= ?
@@ -276,6 +314,9 @@ def _row_to_metric_sample(row: sqlite3.Row) -> MetricSampleRecord:
             if row["network_download_bytes_per_second"] is None
             else float(row["network_download_bytes_per_second"])
         ),
+        gpu_usage_percent=row["gpu_usage_percent"],
+        disk_read_bytes_per_second=row["disk_read_bytes_per_second"],
+        disk_write_bytes_per_second=row["disk_write_bytes_per_second"],
         network_upload_bytes_per_second=(
             None
             if row["network_upload_bytes_per_second"] is None

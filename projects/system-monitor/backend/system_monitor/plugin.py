@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from system_monitor.api import (
     cpu,
+    feature_health,
     disk,
     history,
     memory,
@@ -29,4 +30,5 @@ def build_router() -> APIRouter:
     router.include_router(network.router)
     router.include_router(history.router)
     router.include_router(services.router)
+    router.include_router(feature_health.router)
     return router

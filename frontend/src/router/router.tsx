@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Navigate, createBrowserRouter, useLocation } from 'react-router-dom';
+import { Navigate, createBrowserRouter, useLocation, useRoutes } from 'react-router-dom';
 import type { RouteObject } from 'react-router-dom';
 import { ProjectErrorBoundary } from '../components/layout/ProjectErrorBoundary';
 import { AppShell } from '../components/layout/AppShell';
@@ -47,16 +47,14 @@ function LegacyRedirect({ fromBase, toBase }: { fromBase: string; toBase: string
 
 function ProjectPage({
   project,
-  itemPath,
 }: {
   project: DiscoveredProject;
-  itemPath: string;
 }) {
   const { pathname } = useLocation();
   const [attempt, setAttempt] = useState(0);
   const LazyPage = useMemo(
-    () => lazy(() => loadProjectPage(project, itemPath)),
-    [project, itemPath, attempt],
+    () => lazy(() => loadProjectRoutes(project)),
+    [project, attempt],
   );
 
   return (
@@ -71,38 +69,26 @@ function ProjectPage({
   );
 }
 
-async function loadProjectPage(project: DiscoveredProject, itemPath: string) {
+/** 模組路由獨立於側欄項目，讓詳情頁不必新增導覽連結也能直接開啟。 */
+async function loadProjectRoutes(project: DiscoveredProject) {
   const projectModule = await project.loadFrontend();
-  const route = projectModule.routes.find((entry) =>
-    itemPath === '' ? entry.index === true : entry.path === itemPath,
+  const routes: RouteObject[] = projectModule.routes.map((route) =>
+    route.index
+      ? { index: true, element: route.element }
+      : { path: route.path, element: route.element },
   );
-  if (route == null) {
-    throw new Error(
-      `Project '${project.manifest.name}' has no page for '${itemPath || '/'}'.`,
-    );
-  }
-  const element = route.element;
+  routes.push({ path: '*', element: <NotFoundPage /> });
   return {
-    default: function LoadedProjectPage() {
-      return element;
+    default: function LoadedProjectRoutes() {
+      return useRoutes(routes);
     },
   };
 }
 
 function projectRoutes(projects: readonly DiscoveredProject[]): RouteObject[] {
   return projects.map((project) => ({
-    path: project.manifest.routeBase.replace(/^\//, ''),
-    children: project.manifest.nav.items.map((item) =>
-      item.path === ''
-        ? {
-            index: true as const,
-            element: <ProjectPage project={project} itemPath="" />,
-          }
-        : {
-            path: item.path,
-            element: <ProjectPage project={project} itemPath={item.path} />,
-          },
-    ),
+    path: `${project.manifest.routeBase.replace(/^\//, '')}/*`,
+    element: <ProjectPage project={project} />,
   }));
 }
 

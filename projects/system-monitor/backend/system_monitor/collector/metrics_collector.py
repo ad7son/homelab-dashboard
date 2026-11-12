@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from system_monitor.services.collector_status import record_collector_result
 from system_monitor.db.metrics_database import (
     DuplicateMetricSampleError,
     MetricSampleRecord,
@@ -23,6 +24,10 @@ from system_monitor.db.metrics_database import (
     insert_metric_sample,
     resolve_metrics_db_path,
 )
+from system_monitor.schemas.gpu import GpuInfo
+from system_monitor.schemas.disk_io import DiskIoInfo
+from system_monitor.services.gpu_service import get_gpu_info
+from system_monitor.services.disk_io_service import get_disk_io_info
 from system_monitor.schemas.cpu import CpuInfo
 from system_monitor.schemas.memory import MemoryInfo
 from system_monitor.schemas.network import NetworkInfo
@@ -39,6 +44,8 @@ logger = logging.getLogger("a7las.metrics_collector")
 CpuReader = Callable[[], CpuInfo]
 MemoryReader = Callable[[], MemoryInfo]
 NetworkReader = Callable[[], NetworkInfo]
+GpuReader = Callable[[], GpuInfo]
+DiskIoReader = Callable[[], DiskIoInfo]
 Clock = Callable[[], float]
 MonotonicClock = Callable[[], float]
 RetentionCleanup = Callable[[Path], Optional[int]]
@@ -106,12 +113,16 @@ def collect_once(
     cpu_reader: CpuReader = get_cpu_info,
     memory_reader: MemoryReader = get_memory_info,
     network_reader: NetworkReader = get_network_info,
+    gpu_reader: GpuReader = get_gpu_info,
+    disk_io_reader: DiskIoReader = get_disk_io_info,
     clock: Clock = time.time,
 ) -> MetricSampleRecord:
     """Collect one historical sample and persist it."""
     cpu = cpu_reader()
     memory = memory_reader()
     network = network_reader()
+    gpu = gpu_reader()
+    disk_io = disk_io_reader()
     timestamp_ms = int(clock() * 1000)
 
     sample = MetricSampleRecord(
@@ -121,6 +132,9 @@ def collect_once(
         memory_usage_percent=float(memory.usage_percent),
         network_download_bytes_per_second=network.download_rate,
         network_upload_bytes_per_second=network.upload_rate,
+        gpu_usage_percent=gpu.usage_percent,
+        disk_read_bytes_per_second=disk_io.read_bytes_per_second,
+        disk_write_bytes_per_second=disk_io.write_bytes_per_second,
     )
     insert_metric_sample(connection, sample)
     return sample
@@ -132,20 +146,31 @@ def run_collect_iteration(
     cpu_reader: CpuReader = get_cpu_info,
     memory_reader: MemoryReader = get_memory_info,
     network_reader: NetworkReader = get_network_info,
+    gpu_reader: GpuReader = get_gpu_info,
+    disk_io_reader: DiskIoReader = get_disk_io_info,
     clock: Clock = time.time,
 ) -> MetricSampleRecord:
     """Open a short-lived DB connection and collect/store one sample."""
-    connection = connect_metrics_database(db_path)
+    connection = None
     try:
-        return collect_once(
+        connection = connect_metrics_database(db_path)
+        sample = collect_once(
             connection,
             cpu_reader=cpu_reader,
             memory_reader=memory_reader,
             network_reader=network_reader,
+            gpu_reader=gpu_reader,
+            disk_io_reader=disk_io_reader,
             clock=clock,
         )
+        record_collector_result(db_path, sample=sample)
+        return sample
+    except Exception as exc:
+        record_collector_result(db_path, error=exc)
+        raise
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def run_retention_cleanup(
@@ -202,6 +227,8 @@ def run_collector_loop(
     cpu_reader: CpuReader = get_cpu_info,
     memory_reader: MemoryReader = get_memory_info,
     network_reader: NetworkReader = get_network_info,
+    gpu_reader: GpuReader = get_gpu_info,
+    disk_io_reader: DiskIoReader = get_disk_io_info,
     clock: Clock = time.time,
     monotonic_clock: MonotonicClock = time.monotonic,
     retention_cleanup: Optional[RetentionCleanup] = None,
@@ -232,6 +259,8 @@ def run_collector_loop(
                 cpu_reader=cpu_reader,
                 memory_reader=memory_reader,
                 network_reader=network_reader,
+                gpu_reader=gpu_reader,
+                disk_io_reader=disk_io_reader,
                 clock=clock,
             )
             logger.debug(

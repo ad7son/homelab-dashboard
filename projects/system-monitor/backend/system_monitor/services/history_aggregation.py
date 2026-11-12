@@ -44,6 +44,10 @@ def _aggregate_bucket(samples: Sequence[MetricSampleRecord]) -> MetricSampleReco
 
     return MetricSampleRecord(
         timestamp_ms=timestamp_ms,
+        # 不支援或升級前的 NULL 不參與平均；整桶無資料時仍為 NULL。
+        gpu_usage_percent=_mean_optional([sample.gpu_usage_percent for sample in samples]),
+        disk_read_bytes_per_second=_mean_optional([sample.disk_read_bytes_per_second for sample in samples]),
+        disk_write_bytes_per_second=_mean_optional([sample.disk_write_bytes_per_second for sample in samples]),
         cpu_usage_percent=_mean([sample.cpu_usage_percent for sample in samples]),
         cpu_temperature_celsius=_mean_optional(
             [sample.cpu_temperature_celsius for sample in samples]

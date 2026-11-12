@@ -8,9 +8,14 @@ const HomeLabDashboard = lazy(() =>
   })),
 )
 
+const ProjectHealthPage = lazy(() =>
+  import('./pages/ProjectHealthPage').then((module) => ({ default: module.ProjectHealthPage })),
+)
+
 const systemMonitorModule: ProjectFrontendModule = {
   routes: [
     { index: true, element: <HomeLabDashboard /> },
+    { path: 'health/:projectId', element: <ProjectHealthPage /> },
   ],
 }
 

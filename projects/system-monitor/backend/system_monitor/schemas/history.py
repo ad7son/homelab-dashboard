@@ -20,6 +20,9 @@ class HistoricalMetricSample(BaseModel):
     memory_usage_percent: float
     network_download_bytes_per_second: Optional[float]
     network_upload_bytes_per_second: Optional[float]
+    gpu_usage_percent: Optional[float] = None
+    disk_read_bytes_per_second: Optional[float] = None
+    disk_write_bytes_per_second: Optional[float] = None
 
 
 class HistoricalMetricsResponse(BaseModel):

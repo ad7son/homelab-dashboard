@@ -6,6 +6,7 @@ import type {
 } from '../types/history';
 
 const DEFAULT_RANGE: HistoricalRange = '1h';
+const HISTORY_REFRESH_INTERVAL_MS = 30_000;
 
 interface UseHistoricalMetricsOptions {
   enabled: boolean;
@@ -44,6 +45,14 @@ export function useHistoricalMetrics({
   const retry = useCallback(() => {
     setReloadToken((token) => token + 1);
   }, []);
+
+  // 歷史採集器與即時 API 獨立運作；開啟 History 時定時重新查詢新樣本。
+  // 離開歷史模式或頁面後清除計時器，避免背景持續發送查詢。
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(retry, HISTORY_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [enabled, retry]);
 
   useEffect(() => {
     if (!enabled) {

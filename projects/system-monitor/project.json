@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "system-monitor",
-  "name": "Monitor",
+  "name": "System Monitor",
   "description": "Real-time system monitoring dashboard",
   "pythonPackage": "system_monitor",
   "routeBase": "/system-monitor",
@@ -15,10 +15,10 @@
     "items": [
       {
         "path": "",
-        "label": "Monitor",
-        "icon": "server",
-        "end": true,
-        "documentTitle": "Monitor"
+        "label": "System Monitor",
+        "icon": "activity",
+        "end": false,
+        "documentTitle": "System Monitor"
       }
     ]
   }

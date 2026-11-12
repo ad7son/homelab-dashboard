@@ -59,6 +59,21 @@ export interface Overview {
   memory: MemoryInfo;
   disks: DiskInfo[];
   network: NetworkInfo;
+  gpu: GpuInfo;
+  disk_io: DiskIoInfo;
+}
+
+export interface GpuInfo {
+  status: 'available' | 'unavailable' | 'unsupported';
+  usage_percent: number | null;
+  name: string | null;
+  device_count: number;
+}
+
+export interface DiskIoInfo {
+  status: 'available' | 'warming_up' | 'unavailable';
+  read_bytes_per_second: number | null;
+  write_bytes_per_second: number | null;
 }
 
 export type ConnectionStatus = 'online' | 'unstable' | 'offline';

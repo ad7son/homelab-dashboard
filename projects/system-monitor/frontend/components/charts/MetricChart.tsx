@@ -110,7 +110,7 @@ export function MetricChart({
 
   if (unavailable) {
     body = <div className="metric-chart-empty">{unavailableMessage}</div>;
-  } else if (data.length < 2) {
+  } else if (data.length === 0) {
     body = <div className="metric-chart-empty">{emptyMessage}</div>;
   } else {
     body = (
@@ -164,7 +164,8 @@ export function MetricChart({
               name={item.name}
               stroke={item.color}
               strokeWidth={2}
-              dot={false}
+              // 依序列計算有效值：磁碟首筆可能為 null，只有一個讀值時仍需顯示點。
+              dot={data.filter((point) => point[item.dataKey] != null).length === 1 ? { r: 3 } : false}
               connectNulls={false}
               isAnimationActive={false}
               activeDot={{ r: 3 }}

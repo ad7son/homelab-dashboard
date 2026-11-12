@@ -10,23 +10,24 @@ import { PageContainer } from '@shell/components/layout/PageContainer';
 import { SectionHeader } from '@shell/components/layout/SectionHeader';
 import { CpuCard } from '../components/metrics/CpuCard';
 import { MemoryCard } from '../components/metrics/MemoryCard';
-import { NetworkCard } from '../components/metrics/NetworkCard';
-import { StorageCard } from '../components/metrics/StorageCard';
-import { ServicesSection } from '../components/services/ServicesSection';
+import { GpuCard } from '../components/metrics/GpuCard';
+import { DiskIoCard } from '../components/metrics/DiskIoCard';
+import { ProjectHealthSection } from '../components/health/ProjectHealthSection';
 import { useSystemOverview } from '../hooks/useSystemOverview';
-import { useServices } from '../hooks/useServices';
+import { useProjectHealth } from '../hooks/useProjectHealth';
+import { usePageScrollPosition } from '../hooks/usePageScrollPosition';
 
 export function HomeLabDashboard() {
   const { data, loading, error, lastUpdated, status, refresh, samples } =
     useSystemOverview();
   const [monitoringMode, setMonitoringMode] = useState<MonitoringMode>('live');
-  const services = useServices();
   const [refreshToken, setRefreshToken] = useState(0);
+  const health = useProjectHealth(refreshToken);
+  usePageScrollPosition(data !== null && (health.data !== null || !health.loading));
 
-  // 頁首統一刷新主機、服務與目前啟用的歷史圖表；不重設所選指標或時間範圍。
+  // 同時刷新主機資訊、歷史圖表與實際功能健康報告。
   const refreshPage = () => {
     refresh();
-    services.refresh();
     setRefreshToken((token) => token + 1);
   };
 
@@ -75,8 +76,8 @@ export function HomeLabDashboard() {
             <div className="metrics-grid">
               <CpuCard cpu={data.cpu} samples={samples} />
               <MemoryCard memory={data.memory} samples={samples} />
-              <StorageCard disks={data.disks} />
-              <NetworkCard network={data.network} />
+              <GpuCard gpu={data.gpu} />
+              <DiskIoCard diskIo={data.disk_io} />
             </div>
           </div>
 
@@ -89,7 +90,7 @@ export function HomeLabDashboard() {
         </div>
       </section>
 
-      <ServicesSection services={services} />
+      <ProjectHealthSection health={health} />
     </PageContainer>
   );
 }

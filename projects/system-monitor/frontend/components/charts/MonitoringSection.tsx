@@ -121,7 +121,11 @@ export function MonitoringSection({
         </div>
       ) : data && data.samples.length === 0 ? (
         <div className="monitoring-panel-state" role="status">
-          No historical data available for this range.
+          <p className="monitoring-panel-body">
+            No samples recorded in the last {range === '15m' ? '15 minutes' : range === '1h' ? 'hour' : range === '24h' ? '24 hours' : '7 days'}.
+          </p>
+          <p className="monitoring-panel-detail">Check that the metrics collector is running.</p>
+          <button type="button" className="homelab-retry-button" onClick={retry}>Retry</button>
         </div>
       ) : data ? (
         <HistoricalMonitoringCharts range={range} samples={data.samples} metric={metric} />

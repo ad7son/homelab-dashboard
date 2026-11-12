@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Callable, Optional, Union
 
 from system_monitor.db.metrics_database import (
+    CURRENT_SCHEMA_VERSION,
+    resolve_metrics_db_path,
     UnsupportedSchemaVersionError,
     connect_metrics_database,
     read_metric_samples,
@@ -50,6 +52,7 @@ def get_historical_metrics(
     db_path: Optional[Union[str, Path]] = None,
     now_ms: Optional[int] = None,
     clock_ms: Optional[Callable[[], int]] = None,
+    read_only: bool = False,
 ) -> HistoricalMetricsResponse:
     """
     Build a historical metrics response for the requested range.
@@ -61,8 +64,15 @@ def get_historical_metrics(
     start_timestamp_ms = end_timestamp_ms - RANGE_DURATION_MS[history_range]
 
     try:
-        connection = connect_metrics_database(db_path)
+        # 健康探測走同一條查詢與序列化流程，但不建立或遷移資料庫。
+        if read_only:
+            connection = sqlite3.connect(resolve_metrics_db_path(db_path).as_uri() + "?mode=ro", uri=True, timeout=1)
+            connection.row_factory = sqlite3.Row
+        else:
+            connection = connect_metrics_database(db_path)
         try:
+            if read_only and connection.execute("PRAGMA user_version").fetchone()[0] != CURRENT_SCHEMA_VERSION:
+                raise UnsupportedSchemaVersionError("Historical schema requires migration")
             records = read_metric_samples(
                 connection,
                 start_timestamp_ms,
@@ -87,6 +97,9 @@ def get_historical_metrics(
             memory_usage_percent=record.memory_usage_percent,
             network_download_bytes_per_second=record.network_download_bytes_per_second,
             network_upload_bytes_per_second=record.network_upload_bytes_per_second,
+            gpu_usage_percent=record.gpu_usage_percent,
+            disk_read_bytes_per_second=record.disk_read_bytes_per_second,
+            disk_write_bytes_per_second=record.disk_write_bytes_per_second,
         )
         for record in records
     ]

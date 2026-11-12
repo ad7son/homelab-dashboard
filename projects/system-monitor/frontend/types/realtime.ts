@@ -5,4 +5,7 @@ export interface RealtimeSample {
   memoryUsagePercent: number;
   networkDownloadBytesPerSecond: number | null;
   networkUploadBytesPerSecond: number | null;
+  gpuUsagePercent: number | null;
+  diskReadBytesPerSecond: number | null;
+  diskWriteBytesPerSecond: number | null;
 }

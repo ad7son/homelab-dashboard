@@ -179,6 +179,8 @@ def test_overview_returns_200(api_client: TestClient) -> None:
     assert "memory" in data
     assert "disks" in data
     assert "network" in data
+    assert "gpu" in data
+    assert "disk_io" in data
 
 
 def test_overview_cpu_percent_valid(api_client: TestClient) -> None:

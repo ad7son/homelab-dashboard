@@ -36,6 +36,9 @@ export interface ChartPoint {
   memoryUsagePercent: number | null;
   networkDownloadBytesPerSecond: number | null;
   networkUploadBytesPerSecond: number | null;
+  gpuUsagePercent: number | null;
+  diskReadBytesPerSecond: number | null;
+  diskWriteBytesPerSecond: number | null;
 }
 
 function insertChartGaps(
@@ -61,6 +64,9 @@ function insertChartGaps(
           memoryUsagePercent: null,
           networkDownloadBytesPerSecond: null,
           networkUploadBytesPerSecond: null,
+          gpuUsagePercent: null,
+          diskReadBytesPerSecond: null,
+          diskWriteBytesPerSecond: null,
         });
       }
     }
@@ -79,6 +85,9 @@ export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
     memoryUsagePercent: sample.memoryUsagePercent,
     networkDownloadBytesPerSecond: sample.networkDownloadBytesPerSecond,
     networkUploadBytesPerSecond: sample.networkUploadBytesPerSecond,
+    gpuUsagePercent: sample.gpuUsagePercent ?? null,
+    diskReadBytesPerSecond: sample.diskReadBytesPerSecond ?? null,
+    diskWriteBytesPerSecond: sample.diskWriteBytesPerSecond ?? null,
   }));
 
   return insertChartGaps(points, REALTIME_CHART_GAP_THRESHOLD_MS);
@@ -95,6 +104,9 @@ export function historicalSamplesToChartPoints(
     memoryUsagePercent: sample.memory_usage_percent,
     networkDownloadBytesPerSecond: sample.network_download_bytes_per_second,
     networkUploadBytesPerSecond: sample.network_upload_bytes_per_second,
+    gpuUsagePercent: sample.gpu_usage_percent ?? null,
+    diskReadBytesPerSecond: sample.disk_read_bytes_per_second ?? null,
+    diskWriteBytesPerSecond: sample.disk_write_bytes_per_second ?? null,
   }));
 
   return insertChartGaps(points, historyChartGapThresholdMs(range));

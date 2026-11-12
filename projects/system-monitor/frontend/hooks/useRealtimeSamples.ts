@@ -16,6 +16,9 @@ export function overviewToRealtimeSample(
     memoryUsagePercent: overview.memory.usage_percent,
     networkDownloadBytesPerSecond: overview.network.download_rate,
     networkUploadBytesPerSecond: overview.network.upload_rate,
+    gpuUsagePercent: overview.gpu?.usage_percent ?? null,
+    diskReadBytesPerSecond: overview.disk_io?.read_bytes_per_second ?? null,
+    diskWriteBytesPerSecond: overview.disk_io?.write_bytes_per_second ?? null,
   };
 }
 

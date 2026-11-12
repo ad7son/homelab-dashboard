@@ -79,6 +79,7 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 - Live overview polls about every 3 seconds. The services page polls about every 15 seconds.
 - Historical ranges are `15m`, `1h`, `24h`, and `7d`.
 - The collector samples every 30 seconds and keeps raw samples for 7 days.
+- GPU usage and disk read/write rates are available in both Live and History charts. SQLite schema v2 adds three nullable columns and upgrades v1 databases in place, preserving older samples as missing values for these metrics. Restart both the API and collector after updating; new history begins accumulating when the updated collector runs.
 
 ### Project Showcase
 
@@ -182,9 +183,23 @@ Do not edit `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/router/r
 | GET | `/api/system-monitor/network` | System Monitor |
 | GET | `/api/system-monitor/history?range=15m` | System Monitor. `range` is `15m`, `1h`, `24h`, or `7d`. |
 | GET | `/api/system-monitor/services` | System Monitor |
+| GET | `/api/system-monitor/feature-health` | System Monitor. 實際功能健康報告；`force=true` 略過報告快取。 |
 | GET | `/api/project-showcase/info` | Project Showcase |
 
-The same System Monitor paths are also mounted at `/api/overview`, `/api/system`, `/api/cpu`, `/api/memory`, `/api/disks`, `/api/network`, `/api/history`, and `/api/services`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
+The same System Monitor paths are also mounted at `/api/overview`, `/api/system`, `/api/cpu`, `/api/memory`, `/api/disks`, `/api/network`, `/api/history`, `/api/services`, and `/api/feature-health`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
+
+### System Monitor 功能健康檢查
+
+`GET /api/system-monitor/feature-health` 回報 CPU、記憶體、GPU、Disk I/O、網路、歷史寫入與歷史查詢七項功能。這些是採集與查詢是否正常的檢查，CPU 使用率高不會直接判為採集故障。每項包含 `status`、中文說明與判定依據、檢查時間、最近成功時間、耗時、來源、完整 `raw_data` 與可取得的例外堆疊；單項失敗不會中止其他檢查。
+
+- `healthy`：取得有效資訊；零使用率或零流量仍正常。
+- `issues`：讀取失敗、資料無效，或歷史樣本超過 90 秒未更新。
+- `unavailable`：沒有可用來源或平台不支援，例如目前 macOS 上的 GPU。
+- `unknown`：尚未完成速率計算所需的首次取樣。
+
+報告快取三秒，`force=true` 可要求重新檢查（底層採集器仍保有自己的取樣間隔／快取）。總覽每 30 秒更新；詳情頁固定快照，按刷新時同步替換狀態與證據。畫面的完整 API 回應是這份健康報告，包含七項檢查，而非另一次 overview 查詢。請求失敗時明確提示並保留上次報告，不產生假數值。
+
+歷史寫入檢查唯讀查詢最新樣本，並讀取採集器的 `<metrics.db>.collector-status.json` 原子診斷紀錄。新增程式後需重啟採集器才能產生旁檔；檔案包含最近嘗試、成功樣本與原始錯誤。旁檔寫入失敗會記錄日誌，不中止採集。歷史查詢檢查與正式查詢使用同一服務，但使用唯讀模式，不建立或遷移資料庫；空清單屬查詢成功，樣本新鮮度由寫入檢查判斷。目前檢查一小時範圍，未涵蓋長時間降採樣。除歷史寫入外，最近成功時間僅保留於目前後端程序記憶體，重啟後重新累積。
 
 ## Linux Deployment Notes
 
