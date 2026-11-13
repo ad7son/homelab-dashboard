@@ -94,6 +94,27 @@ CLI 只設定日誌、停止訊號、取得程序鎖並呼叫 runner。runner �
 
 `core/config.py` 集中現有政策與預設值，這次沒有新增對外環境變數。`core/logging.py` 僅由採集器 CLI 設定 root logging，平台掛載時沿用平台設定。專案需求維持 `requirements.txt`；平台的 `backend/constraints.txt` 約束已驗證的共用環境版本，新增依賴後需重新解析並測試。
 
+## 程式風格與排版
+
+Python 以 [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) 為基準；完整繁體中文參考稿見 [Google Python 風格指南](standards/google-python-styleguide-zh-tw.md)。模組、類別與需要說明的函式使用繁體中文文件字串，`Args`、`Returns`、`Raises`、`Attributes` 保留英文；型別、單位、缺值、時間邊界、資源所有權與錯誤傳播需與實作一致。名稱已充分表達目的的測試不重複撰寫文件字串。
+
+排版採用 [Black 官方風格](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html)，固定 Black 26.5.1，依 Google 規範設為每行 80 字元、4 空格縮排。設定在 `projects/system-monitor/backend/pyproject.toml`，開發工具版本在 `requirements-dev.txt`；不加入執行時 `requirements.txt`。格式化的語法目標保留 Python 3.10，未為註解工作提高最低語法版本。
+
+安裝開發工具後，從儲存庫根目錄執行：
+
+```bash
+python -m black --config projects/system-monitor/backend/pyproject.toml projects/system-monitor/backend/src projects/system-monitor/backend/tests
+```
+
+這次不啟用 Pylint、型別檢查器或其他 lint 檢查。下列差異明確保留：
+
+- 平台用動態命名空間隔離各專案，因此內部模組路徑保留相對匯入；仍以模組名稱限定類別與函式，不使用另一份 `src` 的絕對匯入。
+- `fcntl` 只在取得程序鎖時載入，使沒有此模組的平台仍能匯入 API；此為延遲匯入例外，不擴散到一般模組。
+- 既有公開 API 模型及診斷來源名稱保留，避免純風格調整改變 OpenAPI 元件名稱或診斷定位文字。新增名稱依指南命名。
+- 專案授權尚未決定，依維護者指示暫不加入每個檔案的授權聲明。
+
+Black 的維護規範可查閱，沒有找不到的 Python 排版工具規範。Google Python 指南沒有規定 SQL、TOML 或 requirements 檔案的完整格式；這些部分沿用專案慣例：SQL 關鍵字大寫、欄位及遷移陳述式分行，設定與依賴項目逐行撰寫，必要說明使用繁體中文註解。沒有另行引入 SQL 格式化工具或宣稱存在統一的企業標準。
+
 ## 驗證與維護
 
 - `tests/unit/`：純規則、降採樣、應用服務替身與架構依賴限制。

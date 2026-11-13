@@ -1,23 +1,33 @@
-"""Mounted system-monitor API, including the legacy /api prefix."""
+"""驗證平台掛載的正式／相容前綴、路由唯一性及已移除入口。"""
 
 from __future__ import annotations
 
-from monitor_backend import module as monitor_module
-
+from fastapi import testclient
 import pytest
-from fastapi.testclient import TestClient
 
-from app.config import A7LAS_VERSION
-from app.main import app
-from app.modules.loader import default_projects_root, discover_project_manifests
-build_router = monitor_module('plugin').build_router
+from app import config
+from app import main
+from app.modules import loader
+import monitor_backend
 
-client = TestClient(app)
+plugin = monitor_backend.module("plugin")
+
+# 此檔共用輕量 API 用戶端；資料庫與服務狀態由各測試 fixture 隔離。
+_client = testclient.TestClient(main.app)
 
 LIVE_PATHS = ("overview",)
 
 
 def assert_same_shape(left: object, right: object) -> None:
+    """遞迴比較 JSON 結構，忽略即時數值差異及選用來源的空值。
+
+    Args:
+        left: 舊前綴的 API 回應。
+        right: 專案正式前綴的 API 回應。
+
+    Raises:
+        AssertionError: 欄位集合、清單長度或可比較的葉節點型別不同。
+    """
     if isinstance(left, dict) and isinstance(right, dict):
         assert set(left) == set(right)
         for key in left:
@@ -36,7 +46,9 @@ def assert_same_shape(left: object, right: object) -> None:
 
 
 def test_system_monitor_manifest_is_discovered() -> None:
-    manifests = discover_project_manifests(default_projects_root())
+    manifests = loader.discover_project_manifests(
+        loader.default_projects_root()
+    )
     match = next(item for item in manifests if item.id == "system-monitor")
     assert match.api_prefix == "/api/system-monitor"
     assert match.legacy_api_prefix == "/api"
@@ -46,23 +58,25 @@ def test_system_monitor_manifest_is_discovered() -> None:
 
 
 def test_build_router_returns_a_new_parent_each_call() -> None:
-    first = build_router()
-    second = build_router()
+    first = plugin.build_router()
+    second = plugin.build_router()
     assert first is not second
 
 
 @pytest.mark.parametrize("path", LIVE_PATHS)
 def test_legacy_and_namespaced_routes_share_a_shape(path: str) -> None:
-    legacy = client.get(f"/api/{path}")
-    current = client.get(f"/api/system-monitor/{path}")
+    legacy = _client.get(f"/api/{path}")
+    current = _client.get(f"/api/system-monitor/{path}")
     assert legacy.status_code == 200
     assert current.status_code == 200
     assert_same_shape(legacy.json(), current.json())
 
 
 def test_history_prefix_is_compatible() -> None:
-    legacy = client.get("/api/history", params={"range": "15m"})
-    current = client.get("/api/system-monitor/history", params={"range": "15m"})
+    legacy = _client.get("/api/history", params={"range": "15m"})
+    current = _client.get(
+        "/api/system-monitor/history", params={"range": "15m"}
+    )
     assert legacy.status_code == current.status_code
     assert legacy.status_code in {200, 503}
     if legacy.status_code == 200:
@@ -70,10 +84,10 @@ def test_history_prefix_is_compatible() -> None:
 
 
 def test_health_stays_on_the_platform_prefix() -> None:
-    response = client.get("/api/health")
+    response = _client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": A7LAS_VERSION}
-    assert client.get("/api/system-monitor/health").status_code == 404
+    assert response.json() == {"status": "ok", "version": config.A7LAS_VERSION}
+    assert _client.get("/api/system-monitor/health").status_code == 404
 
 
 def _mounted_http_paths() -> list[str]:
@@ -91,13 +105,15 @@ def _mounted_http_paths() -> list[str]:
             extra = getattr(include, "prefix", "") or ""
             next_prefix = f"{prefix}{extra}"
         original = getattr(route, "original_router", None)
-        children = getattr(original, "routes", None) if original is not None else None
+        children = (
+            getattr(original, "routes", None) if original is not None else None
+        )
         if not children:
             return
         for child in children:
             walk(child, next_prefix)
 
-    for route in app.routes:
+    for route in main.app.routes:
         walk(route, "")
     return paths
 
@@ -111,9 +127,11 @@ def test_each_monitoring_route_is_mounted_once_per_prefix() -> None:
 
 
 @pytest.mark.parametrize("prefix", ["/api", "/api/system-monitor"])
-@pytest.mark.parametrize("name", ["services", "system", "disks", "cpu", "memory", "network"])
+@pytest.mark.parametrize(
+    "name", ["services", "system", "disks", "cpu", "memory", "network"]
+)
 def test_removed_unused_api_is_not_available(prefix: str, name: str) -> None:
     """未使用入口已移除，新舊前綴都不得再提供路由或 API 文件。"""
     path = f"{prefix}/{name}"
-    assert client.get(path).status_code == 404
-    assert path not in app.openapi()["paths"]
+    assert _client.get(path).status_code == 404
+    assert path not in main.app.openapi()["paths"]

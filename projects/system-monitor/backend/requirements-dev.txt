@@ -1,0 +1,2 @@
+# 開發排版工具；執行時依賴維持在 requirements.txt。
+black==26.5.1

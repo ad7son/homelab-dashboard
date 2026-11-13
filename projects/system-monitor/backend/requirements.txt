@@ -1,1 +1,2 @@
+# 主機 CPU、記憶體、網路與磁碟計數器；版本由平台共用 constraints.txt 約束。
 psutil

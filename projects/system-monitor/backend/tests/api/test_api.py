@@ -1,22 +1,26 @@
+"""驗證真實主機總覽 API；選用感測器失敗不應影響其他 CPU 資訊。"""
+
+from fastapi import testclient
 import psutil
 import pytest
-from fastapi.testclient import TestClient
 
-from app.main import app
+from app import main
 
-client = TestClient(app)
+# 此檔共用輕量 API 用戶端；資料庫與服務狀態由各測試 fixture 隔離。
+_client = testclient.TestClient(main.app)
 
 
 @pytest.fixture
-def api_client() -> TestClient:
-    return client
+def api_client() -> testclient.TestClient:
+    return _client
 
 
-# ---------------------------------------------------------------------------
-# CPU collection through overview
-# ---------------------------------------------------------------------------
+# 經由總覽取得 CPU 資訊。
 
-def test_overview_cpu_has_valid_usage_and_cores(api_client: TestClient) -> None:
+
+def test_overview_cpu_has_valid_usage_and_cores(
+    api_client: testclient.TestClient,
+) -> None:
     response = api_client.get("/api/overview")
     assert response.status_code == 200
     data = response.json()["cpu"]
@@ -26,15 +30,17 @@ def test_overview_cpu_has_valid_usage_and_cores(api_client: TestClient) -> None:
 
 
 def test_cpu_temperature_null_when_sensors_raise_oserror(
-    api_client: TestClient,
+    api_client: testclient.TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OS-level temperature read failure must not fail /api/overview."""
+    """作業系統拒絕讀取溫度時，總覽仍應回應成功並保留溫度缺值。"""
 
     def raise_oserror() -> None:
         raise OSError("Permission denied")
 
-    monkeypatch.setattr(psutil, "sensors_temperatures", raise_oserror, raising=False)
+    monkeypatch.setattr(
+        psutil, "sensors_temperatures", raise_oserror, raising=False
+    )
 
     response = api_client.get("/api/overview")
     assert response.status_code == 200
@@ -44,10 +50,10 @@ def test_cpu_temperature_null_when_sensors_raise_oserror(
 
 
 def test_cpu_frequency_null_when_cpu_freq_raises_oserror(
-    api_client: TestClient,
+    api_client: testclient.TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OS-level frequency read failure must not fail /api/overview."""
+    """作業系統拒絕讀取頻率時，總覽仍應回應成功並保留頻率缺值。"""
 
     def raise_oserror() -> None:
         raise OSError("Permission denied")
@@ -61,11 +67,12 @@ def test_cpu_frequency_null_when_cpu_freq_raises_oserror(
     assert 0 <= data["usage_percent"] <= 100
 
 
-# ---------------------------------------------------------------------------
-# Memory collection through overview
-# ---------------------------------------------------------------------------
+# 經由總覽取得記憶體資訊。
 
-def test_overview_memory_includes_swap(api_client: TestClient) -> None:
+
+def test_overview_memory_includes_swap(
+    api_client: testclient.TestClient,
+) -> None:
     response = api_client.get("/api/overview")
     assert response.status_code == 200
     data = response.json()["memory"]
@@ -73,11 +80,12 @@ def test_overview_memory_includes_swap(api_client: TestClient) -> None:
     assert "swap" in data
 
 
-# ---------------------------------------------------------------------------
-# Network collection through overview
-# ---------------------------------------------------------------------------
+# 經由總覽取得網路資訊。
 
-def test_overview_network_includes_rates(api_client: TestClient) -> None:
+
+def test_overview_network_includes_rates(
+    api_client: testclient.TestClient,
+) -> None:
     response = api_client.get("/api/overview")
     assert response.status_code == 200
     data = response.json()["network"]
@@ -85,11 +93,10 @@ def test_overview_network_includes_rates(api_client: TestClient) -> None:
     assert "upload_rate" in data
 
 
-# ---------------------------------------------------------------------------
-# Overview endpoint
-# ---------------------------------------------------------------------------
+# 總覽端點。
 
-def test_overview_returns_200(api_client: TestClient) -> None:
+
+def test_overview_returns_200(api_client: testclient.TestClient) -> None:
     response = api_client.get("/api/overview")
     assert response.status_code == 200
     data = response.json()
@@ -101,23 +108,29 @@ def test_overview_returns_200(api_client: TestClient) -> None:
     assert set(data) == {"cpu", "memory", "network", "gpu", "disk_io"}
 
 
-def test_overview_cpu_percent_valid(api_client: TestClient) -> None:
+def test_overview_cpu_percent_valid(api_client: testclient.TestClient) -> None:
     response = api_client.get("/api/overview")
     cpu = response.json()["cpu"]
     assert 0 <= cpu["usage_percent"] <= 100
 
 
-def test_overview_memory_total_positive(api_client: TestClient) -> None:
+def test_overview_memory_total_positive(
+    api_client: testclient.TestClient,
+) -> None:
     response = api_client.get("/api/overview")
     memory = response.json()["memory"]
     assert memory["total"] > 0
 
 
-def test_network_rates_after_second_sample(api_client: TestClient) -> None:
+def test_network_rates_after_second_sample(
+    api_client: testclient.TestClient,
+) -> None:
     api_client.get("/api/overview")
     response = api_client.get("/api/overview")
     data = response.json()["network"]
     if data["interface"] is not None:
-        assert data["download_rate"] is not None or data["upload_rate"] is not None or (
-            data["download_rate"] == 0 and data["upload_rate"] == 0
+        assert (
+            data["download_rate"] is not None
+            or data["upload_rate"] is not None
+            or (data["download_rate"] == 0 and data["upload_rate"] == 0)
         )

@@ -1,11 +1,11 @@
+"""驗證歷史聚合的平均值、空值、時間桶與輸入不變性。"""
+
 from __future__ import annotations
 
-from monitor_backend import module as monitor_module
+import monitor_backend
 
-MetricSampleRecord = monitor_module('domain.history').MetricSampleRecord
-BUCKET_5_MIN_MS = monitor_module('domain.aggregation').BUCKET_5_MIN_MS
-BUCKET_30_MIN_MS = monitor_module('domain.aggregation').BUCKET_30_MIN_MS
-aggregate_metric_samples = monitor_module('domain.aggregation').aggregate_metric_samples
+domain_history = monitor_backend.module("domain.history")
+aggregation = monitor_backend.module("domain.aggregation")
 
 
 def _sample(
@@ -16,8 +16,9 @@ def _sample(
     memory_usage_percent: float = 50.0,
     network_download_bytes_per_second: float | None = 100.0,
     network_upload_bytes_per_second: float | None = 50.0,
-) -> MetricSampleRecord:
-    return MetricSampleRecord(
+) -> domain_history.MetricSampleRecord:
+    """建立可獨立調整各指標的樣本；時間為毫秒、溫度為攝氏、速率為 bytes/s。"""
+    return domain_history.MetricSampleRecord(
         timestamp_ms=timestamp_ms,
         cpu_usage_percent=cpu_usage_percent,
         cpu_temperature_celsius=cpu_temperature_celsius,
@@ -33,7 +34,9 @@ def test_aggregate_averages_cpu_and_memory() -> None:
         _sample(30_000, cpu_usage_percent=30.0, memory_usage_percent=40.0),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 1
     assert result[0].cpu_usage_percent == 20.0
     assert result[0].memory_usage_percent == 30.0
@@ -47,7 +50,9 @@ def test_aggregate_temperature_ignores_nulls() -> None:
         _sample(60_000, cpu_temperature_celsius=50.0),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 1
     assert result[0].cpu_temperature_celsius == 45.0
 
@@ -58,7 +63,9 @@ def test_aggregate_all_null_temperature_remains_null() -> None:
         _sample(30_000, cpu_temperature_celsius=None),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 1
     assert result[0].cpu_temperature_celsius is None
 
@@ -82,7 +89,9 @@ def test_aggregate_network_averages_valid_values() -> None:
         ),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 1
     assert result[0].network_download_bytes_per_second == 200.0
     assert result[0].network_upload_bytes_per_second == 50.0
@@ -102,7 +111,9 @@ def test_aggregate_all_null_network_remains_null() -> None:
         ),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert result[0].network_download_bytes_per_second is None
     assert result[0].network_upload_bytes_per_second is None
 
@@ -111,11 +122,13 @@ def test_aggregate_keeps_separate_buckets_and_order() -> None:
     samples = [
         _sample(0, cpu_usage_percent=10.0),
         _sample(30_000, cpu_usage_percent=20.0),
-        _sample(BUCKET_5_MIN_MS, cpu_usage_percent=30.0),
-        _sample(BUCKET_5_MIN_MS + 30_000, cpu_usage_percent=50.0),
+        _sample(aggregation.BUCKET_5_MIN_MS, cpu_usage_percent=30.0),
+        _sample(aggregation.BUCKET_5_MIN_MS + 30_000, cpu_usage_percent=50.0),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 2
     assert result[0].cpu_usage_percent == 15.0
     assert result[1].cpu_usage_percent == 40.0
@@ -125,13 +138,18 @@ def test_aggregate_keeps_separate_buckets_and_order() -> None:
 def test_aggregate_does_not_fabricate_empty_buckets() -> None:
     samples = [
         _sample(0, cpu_usage_percent=10.0),
-        # Skip one 5-minute bucket entirely.
-        _sample(2 * BUCKET_5_MIN_MS, cpu_usage_percent=20.0),
+        # 刻意略過一個完整的 5 分鐘桶，確認不會補造資料。
+        _sample(2 * aggregation.BUCKET_5_MIN_MS, cpu_usage_percent=20.0),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_5_MIN_MS
+    )
     assert len(result) == 2
-    assert result[1].timestamp_ms - result[0].timestamp_ms >= BUCKET_5_MIN_MS
+    assert (
+        result[1].timestamp_ms - result[0].timestamp_ms
+        >= aggregation.BUCKET_5_MIN_MS
+    )
 
 
 def test_aggregate_does_not_mutate_source() -> None:
@@ -148,7 +166,7 @@ def test_aggregate_does_not_mutate_source() -> None:
         for sample in samples
     ]
 
-    aggregate_metric_samples(samples, BUCKET_5_MIN_MS)
+    aggregation.aggregate_metric_samples(samples, aggregation.BUCKET_5_MIN_MS)
 
     assert [
         (
@@ -164,10 +182,12 @@ def test_aggregate_30_minute_buckets_for_7d_resolution() -> None:
     samples = [
         _sample(0, cpu_usage_percent=10.0),
         _sample(10 * 60 * 1000, cpu_usage_percent=20.0),
-        _sample(BUCKET_30_MIN_MS, cpu_usage_percent=40.0),
+        _sample(aggregation.BUCKET_30_MIN_MS, cpu_usage_percent=40.0),
     ]
 
-    result = aggregate_metric_samples(samples, BUCKET_30_MIN_MS)
+    result = aggregation.aggregate_metric_samples(
+        samples, aggregation.BUCKET_30_MIN_MS
+    )
     assert len(result) == 2
     assert result[0].cpu_usage_percent == 15.0
     assert result[1].cpu_usage_percent == 40.0

@@ -1,36 +1,71 @@
+"""以替換來源及時鐘驗證背景採集、程序鎖、失敗恢復與清理排程。"""
+
 from __future__ import annotations
 
-from monitor_backend import module as monitor_module
-from monitor_support import collect_once, run_collect_iteration, run_collector_loop, run_retention_cleanup
-
+import pathlib
 import sys
-from pathlib import Path
-from threading import Event, Thread
+import threading
+import types
 
 import pytest
 
-COLLECTION_INTERVAL_SECONDS = monitor_module('core.config').COLLECTION_INTERVAL_SECONDS
-MAINTENANCE_INTERVAL_SECONDS = monitor_module('core.config').MAINTENANCE_INTERVAL_SECONDS
-RAW_RETENTION_MS = monitor_module('core.config').RAW_RETENTION_MS
-CollectorLockError = monitor_module('infrastructure.process_lock').CollectorLockError
-CollectorProcessLock = monitor_module('infrastructure.process_lock').CollectorProcessLock
-DuplicateMetricSampleError = monitor_module('services.exceptions').DuplicateMetricSampleError
-connect_metrics_database = monitor_module('infrastructure.database.connection').connect_metrics_database
-count_metric_samples = monitor_module('infrastructure.repositories.metrics_repository').count_metric_samples
-fetch_metric_sample = monitor_module('infrastructure.repositories.metrics_repository').fetch_metric_sample
-insert_metric_sample = monitor_module('infrastructure.repositories.metrics_repository').insert_metric_sample
-MetricSampleRecord = monitor_module('domain.history').MetricSampleRecord
-CpuInfo = monitor_module('domain.metrics').CpuInfo
-MemoryInfo = monitor_module('domain.metrics').MemoryInfo
-SwapInfo = monitor_module('domain.metrics').SwapInfo
-NetworkInfo = monitor_module('domain.metrics').NetworkInfo
+import monitor_backend
+import monitor_support
+
+core_config = monitor_backend.module("core.config")
+
+
+process_lock = monitor_backend.module("infrastructure.process_lock")
+
+services_exceptions = monitor_backend.module("services.exceptions")
+database_connection = monitor_backend.module(
+    "infrastructure.database.connection"
+)
+metrics_repository = monitor_backend.module(
+    "infrastructure.repositories.metrics_repository"
+)
+
+
+domain_history = monitor_backend.module("domain.history")
+domain_metrics = monitor_backend.module("domain.metrics")
+
+
+def test_process_lock_unexpected_failure_closes_descriptor(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """非 BUSY 的鎖定失敗也必須關閉檔案，同時保留原始例外。"""
+    closed = []
+    handle = types.SimpleNamespace(
+        fileno=lambda: 1, close=lambda: closed.append(True)
+    )
+
+    def fail_lock(descriptor: int, operation: int) -> None:
+        del descriptor, operation  # 替身只模擬失敗，不操作真實描述元。
+        raise PermissionError("lock denied")
+
+    monkeypatch.setattr(
+        process_lock,
+        "open",
+        lambda *args, **kwargs: handle,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        process_lock,
+        "_load_fcntl",
+        lambda: types.SimpleNamespace(LOCK_EX=1, LOCK_NB=2, flock=fail_lock),
+    )
+    lock = process_lock.CollectorProcessLock(tmp_path / "metrics.db")
+    with pytest.raises(PermissionError, match="lock denied"):
+        lock.acquire()
+    assert closed == [True]
 
 
 def _cpu(
     usage: float = 12.5,
     temperature: float | None = 55.0,
-) -> CpuInfo:
-    return CpuInfo(
+) -> domain_metrics.CpuInfo:
+    """建立 CPU 百分比及可選攝氏溫度的來源快照。"""
+    return domain_metrics.CpuInfo(
         usage_percent=usage,
         physical_cores=4,
         logical_cores=8,
@@ -40,21 +75,23 @@ def _cpu(
     )
 
 
-def _memory(usage: float = 40.0) -> MemoryInfo:
-    return MemoryInfo(
+def _memory(usage: float = 40.0) -> domain_metrics.MemoryInfo:
+    """建立可替換使用率的記憶體來源，容量單位為 bytes。"""
+    return domain_metrics.MemoryInfo(
         total=32_000_000_000,
         used=12_800_000_000,
         available=19_200_000_000,
         usage_percent=usage,
-        swap=SwapInfo(total=0, used=0, usage_percent=0.0),
+        swap=domain_metrics.SwapInfo(total=0, used=0, usage_percent=0.0),
     )
 
 
 def _network(
     download: float | None = 2048.0,
     upload: float | None = 1024.0,
-) -> NetworkInfo:
-    return NetworkInfo(
+) -> domain_metrics.NetworkInfo:
+    """建立可替換每秒速率的網路來源，None 代表尚無取樣基準。"""
+    return domain_metrics.NetworkInfo(
         interface="eth0",
         ip_address="192.168.1.10",
         download_rate=download,
@@ -63,22 +100,24 @@ def _network(
 
 
 def test_collection_interval_constant() -> None:
-    assert COLLECTION_INTERVAL_SECONDS == 30
-    assert RAW_RETENTION_MS == 7 * 24 * 60 * 60 * 1000
-    assert MAINTENANCE_INTERVAL_SECONDS == 60 * 60
+    assert core_config.COLLECTION_INTERVAL_SECONDS == 30
+    assert core_config.RAW_RETENTION_MS == 7 * 24 * 60 * 60 * 1000
+    assert core_config.MAINTENANCE_INTERVAL_SECONDS == 60 * 60
 
 
-def test_run_retention_cleanup_deletes_older_than_seven_days(tmp_path: Path) -> None:
+def test_run_retention_cleanup_deletes_older_than_seven_days(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
     now_seconds = 2_000_000_000.0
     now_ms = int(now_seconds * 1000)
-    cutoff = now_ms - RAW_RETENTION_MS
+    cutoff = now_ms - core_config.RAW_RETENTION_MS
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        insert_metric_sample(
+        metrics_repository.insert_metric_sample(
             connection,
-            MetricSampleRecord(
+            domain_history.MetricSampleRecord(
                 timestamp_ms=cutoff - 1,
                 cpu_usage_percent=1.0,
                 cpu_temperature_celsius=None,
@@ -87,9 +126,9 @@ def test_run_retention_cleanup_deletes_older_than_seven_days(tmp_path: Path) -> 
                 network_upload_bytes_per_second=None,
             ),
         )
-        insert_metric_sample(
+        metrics_repository.insert_metric_sample(
             connection,
-            MetricSampleRecord(
+            domain_history.MetricSampleRecord(
                 timestamp_ms=cutoff,
                 cpu_usage_percent=2.0,
                 cpu_temperature_celsius=None,
@@ -98,9 +137,9 @@ def test_run_retention_cleanup_deletes_older_than_seven_days(tmp_path: Path) -> 
                 network_upload_bytes_per_second=None,
             ),
         )
-        insert_metric_sample(
+        metrics_repository.insert_metric_sample(
             connection,
-            MetricSampleRecord(
+            domain_history.MetricSampleRecord(
                 timestamp_ms=now_ms,
                 cpu_usage_percent=3.0,
                 cpu_temperature_celsius=None,
@@ -112,23 +151,36 @@ def test_run_retention_cleanup_deletes_older_than_seven_days(tmp_path: Path) -> 
     finally:
         connection.close()
 
-    deleted = run_retention_cleanup(db_path, clock=lambda: now_seconds)
+    deleted = monitor_support.run_retention_cleanup(
+        db_path, clock=lambda: now_seconds
+    )
     assert deleted == 1
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        assert count_metric_samples(connection) == 2
-        assert fetch_metric_sample(connection, cutoff - 1) is None
-        assert fetch_metric_sample(connection, cutoff) is not None
-        assert fetch_metric_sample(connection, now_ms) is not None
+        assert metrics_repository.count_metric_samples(connection) == 2
+        assert (
+            metrics_repository.fetch_metric_sample(connection, cutoff - 1)
+            is None
+        )
+        assert (
+            metrics_repository.fetch_metric_sample(connection, cutoff)
+            is not None
+        )
+        assert (
+            metrics_repository.fetch_metric_sample(connection, now_ms)
+            is not None
+        )
     finally:
         connection.close()
 
 
-def test_collect_once_stores_one_row(tmp_path: Path) -> None:
-    connection = connect_metrics_database(tmp_path / "metrics.db")
+def test_collect_once_stores_one_row(tmp_path: pathlib.Path) -> None:
+    connection = database_connection.connect_metrics_database(
+        tmp_path / "metrics.db"
+    )
     try:
-        sample = collect_once(
+        sample = monitor_support.collect_once(
             connection,
             cpu_reader=lambda: _cpu(),
             memory_reader=lambda: _memory(),
@@ -136,8 +188,10 @@ def test_collect_once_stores_one_row(tmp_path: Path) -> None:
             clock=lambda: 1_700_000_000.5,
         )
         assert sample.timestamp_ms == 1_700_000_000_500
-        assert count_metric_samples(connection) == 1
-        stored = fetch_metric_sample(connection, sample.timestamp_ms)
+        assert metrics_repository.count_metric_samples(connection) == 1
+        stored = metrics_repository.fetch_metric_sample(
+            connection, sample.timestamp_ms
+        )
         assert stored == sample
         assert stored is not None
         assert stored.cpu_usage_percent == 12.5
@@ -148,17 +202,21 @@ def test_collect_once_stores_one_row(tmp_path: Path) -> None:
         connection.close()
 
 
-def test_collect_once_preserves_optional_nulls(tmp_path: Path) -> None:
-    connection = connect_metrics_database(tmp_path / "metrics.db")
+def test_collect_once_preserves_optional_nulls(tmp_path: pathlib.Path) -> None:
+    connection = database_connection.connect_metrics_database(
+        tmp_path / "metrics.db"
+    )
     try:
-        sample = collect_once(
+        sample = monitor_support.collect_once(
             connection,
             cpu_reader=lambda: _cpu(temperature=None),
             memory_reader=lambda: _memory(),
             network_reader=lambda: _network(download=None, upload=None),
             clock=lambda: 1_700_000_001.0,
         )
-        stored = fetch_metric_sample(connection, sample.timestamp_ms)
+        stored = metrics_repository.fetch_metric_sample(
+            connection, sample.timestamp_ms
+        )
         assert stored is not None
         assert stored.cpu_temperature_celsius is None
         assert stored.network_download_bytes_per_second is None
@@ -167,11 +225,11 @@ def test_collect_once_preserves_optional_nulls(tmp_path: Path) -> None:
         connection.close()
 
 
-def test_run_collect_iteration_initializes_db(tmp_path: Path) -> None:
+def test_run_collect_iteration_initializes_db(tmp_path: pathlib.Path) -> None:
     db_path = tmp_path / "metrics.db"
     assert not db_path.exists()
 
-    sample = run_collect_iteration(
+    sample = monitor_support.run_collect_iteration(
         db_path,
         cpu_reader=lambda: _cpu(),
         memory_reader=lambda: _memory(),
@@ -181,27 +239,29 @@ def test_run_collect_iteration_initializes_db(tmp_path: Path) -> None:
     assert db_path.exists()
     assert sample.timestamp_ms == 1_700_000_002_000
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        assert count_metric_samples(connection) == 1
+        assert metrics_repository.count_metric_samples(connection) == 1
     finally:
         connection.close()
 
 
-def test_failed_iteration_does_not_prevent_later_success(tmp_path: Path) -> None:
+def test_failed_iteration_does_not_prevent_later_success(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
+    stop_event = threading.Event()
     calls = {"n": 0}
     timestamps = iter([1_700_000_039.0, 1_700_000_040.0])
 
-    def flaky_cpu() -> CpuInfo:
+    def flaky_cpu() -> domain_metrics.CpuInfo:
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("temporary collection failure")
         stop_event.set()
         return _cpu(usage=22.0)
 
-    run_collector_loop(
+    monitor_support.run_collector_loop(
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
@@ -213,20 +273,24 @@ def test_failed_iteration_does_not_prevent_later_success(tmp_path: Path) -> None
         monotonic_clock=lambda: 0.0,
     )
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        assert count_metric_samples(connection) == 1
-        stored = fetch_metric_sample(connection, 1_700_000_040_000)
+        assert metrics_repository.count_metric_samples(connection) == 1
+        stored = metrics_repository.fetch_metric_sample(
+            connection, 1_700_000_040_000
+        )
         assert stored is not None
         assert stored.cpu_usage_percent == 22.0
     finally:
         connection.close()
 
 
-def test_duplicate_timestamp_does_not_overwrite(tmp_path: Path) -> None:
-    connection = connect_metrics_database(tmp_path / "metrics.db")
+def test_duplicate_timestamp_does_not_overwrite(tmp_path: pathlib.Path) -> None:
+    connection = database_connection.connect_metrics_database(
+        tmp_path / "metrics.db"
+    )
     try:
-        first = MetricSampleRecord(
+        first = domain_history.MetricSampleRecord(
             timestamp_ms=1_700_000_050_000,
             cpu_usage_percent=10.0,
             cpu_temperature_celsius=40.0,
@@ -234,10 +298,10 @@ def test_duplicate_timestamp_does_not_overwrite(tmp_path: Path) -> None:
             network_download_bytes_per_second=100.0,
             network_upload_bytes_per_second=50.0,
         )
-        insert_metric_sample(connection, first)
+        metrics_repository.insert_metric_sample(connection, first)
 
-        with pytest.raises(DuplicateMetricSampleError):
-            collect_once(
+        with pytest.raises(services_exceptions.DuplicateMetricSampleError):
+            monitor_support.collect_once(
                 connection,
                 cpu_reader=lambda: _cpu(usage=99.0, temperature=99.0),
                 memory_reader=lambda: _memory(usage=99.0),
@@ -245,9 +309,11 @@ def test_duplicate_timestamp_does_not_overwrite(tmp_path: Path) -> None:
                 clock=lambda: 1_700_000_050.0,
             )
 
-        stored = fetch_metric_sample(connection, first.timestamp_ms)
+        stored = metrics_repository.fetch_metric_sample(
+            connection, first.timestamp_ms
+        )
         assert stored == first
-        assert count_metric_samples(connection) == 1
+        assert metrics_repository.count_metric_samples(connection) == 1
     finally:
         connection.close()
 
@@ -256,14 +322,14 @@ def test_duplicate_timestamp_does_not_overwrite(tmp_path: Path) -> None:
     sys.platform == "win32",
     reason="CollectorProcessLock uses Linux fcntl.flock",
 )
-def test_process_lock_exclusive_and_releasable(tmp_path: Path) -> None:
+def test_process_lock_exclusive_and_releasable(tmp_path: pathlib.Path) -> None:
     db_path = tmp_path / "metrics.db"
-    first = CollectorProcessLock(db_path)
-    second = CollectorProcessLock(db_path)
+    first = process_lock.CollectorProcessLock(db_path)
+    second = process_lock.CollectorProcessLock(db_path)
 
     first.acquire()
     try:
-        with pytest.raises(CollectorLockError):
+        with pytest.raises(process_lock.CollectorLockError):
             second.acquire()
     finally:
         first.release()
@@ -272,18 +338,20 @@ def test_process_lock_exclusive_and_releasable(tmp_path: Path) -> None:
     second.release()
 
 
-def test_stop_event_exits_loop_without_full_interval(tmp_path: Path) -> None:
+def test_stop_event_exits_loop_without_full_interval(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
-    started = Event()
+    stop_event = threading.Event()
+    started = threading.Event()
 
-    def cpu_reader() -> CpuInfo:
+    def cpu_reader() -> domain_metrics.CpuInfo:
         started.set()
         stop_event.set()
         return _cpu()
 
     def run() -> None:
-        run_collector_loop(
+        monitor_support.run_collector_loop(
             stop_event,
             db_path=db_path,
             interval_seconds=30,
@@ -293,35 +361,37 @@ def test_stop_event_exits_loop_without_full_interval(tmp_path: Path) -> None:
             clock=lambda: 1_700_000_060.0,
         )
 
-    thread = Thread(target=run)
+    thread = threading.Thread(target=run)
     thread.start()
     assert started.wait(timeout=2.0)
     thread.join(timeout=2.0)
     assert not thread.is_alive()
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        assert count_metric_samples(connection) == 1
+        assert metrics_repository.count_metric_samples(connection) == 1
     finally:
         connection.close()
 
 
-def test_startup_maintenance_runs_before_collection(tmp_path: Path) -> None:
+def test_startup_maintenance_runs_before_collection(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
-    cleanup_calls: list[Path] = []
+    stop_event = threading.Event()
+    cleanup_calls: list[pathlib.Path] = []
     collect_after_cleanup = {"ok": False}
 
-    def cleanup(path: Path) -> int:
+    def cleanup(path: pathlib.Path) -> int:
         cleanup_calls.append(path)
         return 0
 
-    def cpu_reader() -> CpuInfo:
+    def cpu_reader() -> domain_metrics.CpuInfo:
         collect_after_cleanup["ok"] = len(cleanup_calls) >= 1
         stop_event.set()
         return _cpu()
 
-    run_collector_loop(
+    monitor_support.run_collector_loop(
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
@@ -338,24 +408,26 @@ def test_startup_maintenance_runs_before_collection(tmp_path: Path) -> None:
     assert collect_after_cleanup["ok"] is True
 
 
-def test_maintenance_not_run_every_collection_iteration(tmp_path: Path) -> None:
+def test_maintenance_not_run_every_collection_iteration(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
+    stop_event = threading.Event()
     cleanup_calls = {"n": 0}
     collections = {"n": 0}
     timestamps = iter([1_700_000_080.0, 1_700_000_081.0, 1_700_000_082.0])
 
-    def cleanup(_path: Path) -> int:
+    def cleanup(_path: pathlib.Path) -> int:
         cleanup_calls["n"] += 1
         return 0
 
-    def cpu_reader() -> CpuInfo:
+    def cpu_reader() -> domain_metrics.CpuInfo:
         collections["n"] += 1
         if collections["n"] >= 3:
             stop_event.set()
         return _cpu()
 
-    run_collector_loop(
+    monitor_support.run_collector_loop(
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
@@ -372,28 +444,28 @@ def test_maintenance_not_run_every_collection_iteration(tmp_path: Path) -> None:
     assert cleanup_calls["n"] == 1
 
 
-def test_maintenance_runs_again_after_interval(tmp_path: Path) -> None:
+def test_maintenance_runs_again_after_interval(tmp_path: pathlib.Path) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
+    stop_event = threading.Event()
     cleanup_calls = {"n": 0}
     collections = {"n": 0}
     mono = {"t": 0.0}
     timestamps = iter([1_700_000_090.0, 1_700_000_091.0])
 
-    def cleanup(_path: Path) -> int:
+    def cleanup(_path: pathlib.Path) -> int:
         cleanup_calls["n"] += 1
         return 0
 
-    def cpu_reader() -> CpuInfo:
+    def cpu_reader() -> domain_metrics.CpuInfo:
         collections["n"] += 1
         if collections["n"] == 1:
-            # After first collection wait, advance past maintenance interval.
+            # 第一次採集後推進到維護間隔之外，驗證重新執行清理。
             mono["t"] = 100.0
         else:
             stop_event.set()
         return _cpu()
 
-    run_collector_loop(
+    monitor_support.run_collector_loop(
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
@@ -410,18 +482,20 @@ def test_maintenance_runs_again_after_interval(tmp_path: Path) -> None:
     assert cleanup_calls["n"] == 2
 
 
-def test_cleanup_failure_does_not_prevent_collection(tmp_path: Path) -> None:
+def test_cleanup_failure_does_not_prevent_collection(
+    tmp_path: pathlib.Path,
+) -> None:
     db_path = tmp_path / "metrics.db"
-    stop_event = Event()
+    stop_event = threading.Event()
 
-    def cleanup(_path: Path) -> int:
+    def cleanup(_path: pathlib.Path) -> int:
         raise RuntimeError("cleanup boom")
 
-    def cpu_reader() -> CpuInfo:
+    def cpu_reader() -> domain_metrics.CpuInfo:
         stop_event.set()
         return _cpu(usage=44.0)
 
-    run_collector_loop(
+    monitor_support.run_collector_loop(
         stop_event,
         db_path=db_path,
         interval_seconds=0.01,
@@ -434,10 +508,12 @@ def test_cleanup_failure_does_not_prevent_collection(tmp_path: Path) -> None:
         retention_cleanup=cleanup,
     )
 
-    connection = connect_metrics_database(db_path)
+    connection = database_connection.connect_metrics_database(db_path)
     try:
-        assert count_metric_samples(connection) == 1
-        stored = fetch_metric_sample(connection, 1_700_000_100_000)
+        assert metrics_repository.count_metric_samples(connection) == 1
+        stored = metrics_repository.fetch_metric_sample(
+            connection, 1_700_000_100_000
+        )
         assert stored is not None
         assert stored.cpu_usage_percent == 44.0
     finally:
