@@ -2,7 +2,7 @@
 
 A7LAS is one web application that hosts more than one project. A shared React shell and a shared FastAPI process discover projects from `projects/`. Each project keeps its own pages, API routes, and manifest.
 
-The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, GPU, disk I/O and network metrics, historical charts, and feature health diagnostics. The second project is Project Showcase, a small read-only module that demonstrates the same discovery path.
+The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, GPU, disk I/O and network metrics, historical charts, and feature health diagnostics.
 
 ## System Architecture
 
@@ -41,7 +41,6 @@ There is one Node app in `frontend/` and one virtual environment in `backend/.ve
 backend/                         Shared FastAPI app, health route, module loader
 frontend/                        Shared Vite shell
 projects/system-monitor/         Home Lab frontend, API, collector, and tests
-projects/project-showcase/       Showcase frontend, read-only API, and tests
 deploy/systemd/                  Linux unit for the metrics collector
 docs/project-module-spec.md      Module contract
 docs/ai-collaboration.md         Course AI collaboration record
@@ -81,42 +80,25 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 - The collector samples every 30 seconds and keeps raw samples for 7 days.
 - GPU usage and disk read/write rates are available in both Live and History charts. SQLite schema v2 adds three nullable columns and upgrades v1 databases in place, preserving older samples as missing values for these metrics. Restart both the API and collector after updating; new history begins accumulating when the updated collector runs.
 
-### Project Showcase
-
-- Id: `project-showcase`
-- Page: `/project-showcase`
-- API: `GET /api/project-showcase/info`
-- The info payload reads `id`, `name`, and `description` from that project's `project.json`.
-- The page shows a loading state, the response body, or a visible error. It does not invent a successful response.
-- This module has no legacy route and no legacy API prefix.
-
 ## System Monitor 後端結構
 
-`projects/system-monitor/backend/src/` 依功能分組，`src/` 本身是 Python 套件，直接包含四個功能資料夾，不再包一層 `app/`。`plugin.py` 集中宣告 `/overview`、`/history`、`/feature-health`。每次 `build_router()` 建立獨立路由，供平台掛載正式及相容前綴。
+後端原始碼位於 `projects/system-monitor/backend/src/`，採用分層單體：
 
 ```text
 src/
-├── main.py           獨立 FastAPI 啟動入口
-├── plugin.py
-├── machine/
-│   ├── models.py       即時資料格式與驗證
-│   ├── readers.py      CPU、記憶體、網路、Disk I/O 與總覽
-│   └── gpu.py          NVIDIA／AMD 來源、平台差異與快取
-├── history/
-│   ├── models.py       儲存樣本與歷史回應格式
-│   ├── database.py     SQLite 連線、交易、遷移與樣本讀寫
-│   └── query.py        時間範圍、降採樣與回應組合
-├── health/
-│   ├── models.py       健康狀態、錯誤與報告格式
-│   └── checks.py       七項功能判定、結果文字與同次證據
-└── collector/
-    ├── metrics_collector.py  背景採集、程序鎖與清理排程
-    └── status.py             最近成功／失敗紀錄的讀寫
+├── plugin.py          平台整合入口
+├── bootstrap.py       建立並注入實際服務與基礎設施
+├── api/               HTTP 路由、Schema、依賴與錯誤轉換
+├── services/          總覽、歷史、健康檢查、採集用例與介面
+├── domain/            不可變資料、健康規則與降採樣純運算
+├── infrastructure/    硬體適配、資料庫、Repository、旁檔及程序鎖
+├── collector/         採集器 CLI 與背景執行迴圈
+└── core/              設定與日誌
 ```
 
-各套件另有 `__init__.py`。即時資訊與健康檢查共用主機採集函式；背景採集器使用 `history/database.py` 寫入樣本。健康檢查透過歷史模組查詢資料，並讀取採集器診斷紀錄，不自行操作 SQL 或啟動背景排程。SQL 與連線規則集中於 `database.py`；原有取樣基準、GPU 快取、WAL、schema v2 與 None 語意保持不變。
+專案自己的 `main.py` 已移除，API 統一由平台 `backend/app/main.py` 載入 `plugin.build_router()`。背景採集器仍使用 `python -m src.collector.metrics_collector`。SQLite schema v2、30 秒採集與七天保留政策維持不變，不需要重建既有資料庫。
 
-重構後應重新啟動 API 與採集器，讓兩個程序都載入新模組。採集器指令仍為 `python -m src.collector.metrics_collector`，資料庫路徑仍為平台的 `backend/data/metrics.db`（可由環境變數覆寫）；不需要重建或刪除既有歷史資料。
+完整責任、SQL 分工、依賴方向、服務生命週期與測試說明見 [System Monitor 後端架構](docs/system-monitor-backend.md)。
 
 ## Installation
 
@@ -124,14 +106,14 @@ Use Windows PowerShell from the repository root. The commands below create the s
 
 ```powershell
 python -m venv backend\.venv
-.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt -r projects\system-monitor\backend\requirements.txt -r projects\project-showcase\backend\requirements.txt
+.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt -r projects\system-monitor\backend\requirements.txt
 cd frontend
 npm install
 ```
 
-`projects/project-showcase/backend/requirements.txt` has no extra packages. It is included so a new environment installs every project requirements file the same way.
+`backend/requirements.txt` 會套用共用的 `backend/constraints.txt` 已驗證版本約束；專案依賴也在同一次安裝中解析。
 
-On Linux, create the same shared environment with `python3 -m venv backend/.venv` and install the same three requirements files into it. The collector unit expects that environment at `/srv/homelab-dashboard/backend/.venv`.
+On Linux, create the same shared environment with `python3 -m venv backend/.venv` and install the same requirements files into it. The collector unit expects that environment at `/srv/homelab-dashboard/backend/.venv`.
 
 ## Running Frontend
 
@@ -155,13 +137,7 @@ From `backend/` in PowerShell, using the shared environment:
 
 Interactive docs are at `http://localhost:8000/docs`. Restart Uvicorn after adding or changing a project plugin.
 
-System Monitor 也可獨立啟動。以下指令從儲存庫根目錄執行，使用獨立連接埠以便與平台並行：
-
-```bash
-backend/.venv/bin/python -m uvicorn src.main:app --app-dir projects/system-monitor/backend --reload --port 8001
-```
-
-平台入口仍為 `backend/app/main.py`；專案入口為 `projects/system-monitor/backend/src/main.py`，平台整合直接載入 `src/plugin.py`。兩種方式提供相同專案 API，不會在 API 程序中啟動採集器。
+System Monitor API 由上方平台指令啟動；不再提供 `src.main:app`。
 
 macOS／Linux 的背景採集器指令（同樣從儲存庫根目錄執行）：
 
@@ -221,7 +197,6 @@ Do not edit `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/router/r
 | GET | `/api/system-monitor/overview` | System Monitor |
 | GET | `/api/system-monitor/history?range=15m` | System Monitor. `range` is `15m`, `1h`, `24h`, or `7d`. |
 | GET | `/api/system-monitor/feature-health` | System Monitor. 實際功能健康報告；`force=true` 略過報告快取。 |
-| GET | `/api/project-showcase/info` | Project Showcase |
 
 The same System Monitor paths are also mounted at `/api/overview`, `/api/history`, and `/api/feature-health`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
 

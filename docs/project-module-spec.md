@@ -251,7 +251,7 @@ Do not edit `Sidebar.tsx`, `frontend/src/router/router.tsx`, or `backend/app/mai
 
 ### Dependencies
 
-Use the shared virtual environment at `backend/.venv`. Platform packages live in `backend/requirements.txt`. A project that needs extra packages lists them in `projects/{project-id}/backend/requirements.txt` and they are installed into the same environment. Project Showcase has no extra packages. System Monitor adds `psutil`.
+Use the shared virtual environment at `backend/.venv`. Platform packages live in `backend/requirements.txt`. A project that needs extra packages lists them in `projects/{project-id}/backend/requirements.txt` and they are installed into the same environment. System Monitor adds `psutil`; the platform requirements apply shared version constraints.
 
 Frontend code under `projects/` imports React through the aliases in `frontend/vite.config.ts` and `frontend/tsconfig.app.json`. Do not add a second `package.json` or `node_modules` inside a project. Shared layout components are imported from `@shell/...`.
 
@@ -278,14 +278,15 @@ Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, or a final `HTTP m
 
 ## 9. Current Development Status
 
-Two modules are registered from `projects/`:
+目前 `projects/` 啟用的模組：
 
 - `system-monitor` — System Monitor at `/system-monitor` and project health details at `/system-monitor/health/system-monitor`. `/homelab` redirects to the project base, preserving child paths. Monitoring APIs are mounted at `/api/system-monitor/...` and, for this project only, at the previous `/api/...` paths.
-- `project-showcase` — one page at `/project-showcase` and `GET /api/project-showcase/info`. It has no legacy aliases.
 
 `GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
 
-System Monitor 後端原始碼位於 `projects/system-monitor/backend/src/`，按功能分成 `machine/`、`history/`、`health/`、`collector/`，各自集中資料模型與實作。`plugin.py` 直接宣告三組 API；主機採集可同時供總覽、採集器與健康檢查呼叫。SQL 集中於 `history/database.py`，採集器診斷旁檔集中於 `collector/status.py`。`project.json` 設定 `pythonPackage: "src"`；獨立 API 入口為 `src.main:app`，採集器入口為 `python -m src.collector.metrics_collector`。平台掛載的 API 路徑與資料格式不變。
+System Monitor 原始碼位於 `projects/system-monitor/backend/src/`，採用 `api/`、`services/`、`domain/`、`infrastructure/`、`collector/`、`core/` 分層，`bootstrap.py` 統一組裝服務。`plugin.py` 僅提供平台掛載入口；已移除專案自己的 `main.py`，API 統一由平台啟動。`project.json` 仍設定 `pythonPackage: "src"`，採集器入口仍為 `python -m src.collector.metrics_collector`。
+
+SQL 查詢集中於 `infrastructure/repositories/metrics_repository.py`；連線與版本遷移分別位於 `infrastructure/database/connection.py`、`migration_runner.py` 與 `migrations/*.sql`。診斷 JSON 旁檔由 `infrastructure/storage/collector_status.py` 管理。應用服務透過介面使用這些實作，公開 API 路徑、欄位與狀態碼維持原契約。完整說明見 [System Monitor 後端架構](system-monitor-backend.md)。
 
 The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. Schema v2 adds nullable GPU usage and disk read/write rate columns and migrates v1 databases transactionally without deleting existing samples. Older samples retain null for the new metrics. The 7-day raw retention window and 30-second collector interval are unchanged. Restart the API and collector together after upgrading.
 
