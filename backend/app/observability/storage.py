@@ -9,7 +9,7 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from typing import Any
 
-from app.observability import config
+from app import config
 from app.observability import models
 
 
@@ -21,7 +21,7 @@ def _connect(
     target = path.as_uri() + "?mode=ro" if read_only else str(path)
     with contextlib.closing(
         sqlite3.connect(
-            target, uri=read_only, timeout=config.SQLITE_TIMEOUT_SECONDS
+            target, uri=read_only, timeout=config.EVENT_SQLITE_TIMEOUT_SECONDS
         )
     ) as database:
         database.row_factory = sqlite3.Row
@@ -38,7 +38,7 @@ class EventStore:
 
     def __init__(self, path: pathlib.Path | None = None) -> None:
         """只解析路徑，不建立資料庫。"""
-        self.path = (path or config.database_path()).resolve()
+        self.path = (path or config.event_database_path()).resolve()
 
     def initialize(self) -> None:
         """建立 WAL 與表結構，允許多程序重複呼叫，不清理資料。"""
@@ -190,3 +190,15 @@ class EventStore:
                 "DELETE FROM events WHERE timestamp_ms < ?", (cutoff_ms,)
             )
             return cursor.rowcount
+
+
+def cleanup_expired(now_ms: int) -> int:
+    """依平台保留政策清理歷史事件；永久保留時不開啟資料庫。"""
+    days = config.EVENT_RETENTION_DAYS
+    if days is None:
+        return 0
+    if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
+        raise ValueError(
+            "EVENT_RETENTION_DAYS must be a positive integer or None"
+        )
+    return EventStore().delete_before(now_ms - days * 86_400_000)

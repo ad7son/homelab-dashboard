@@ -1,41 +1,46 @@
+"""A7LAS 平台組裝入口；專案行為由各自 plugin 提供。"""
+
+from __future__ import annotations
+
 import logging
-from pathlib import Path
+import pathlib
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import fastapi
+from fastapi.middleware import cors
 
-from app.api import health
-from app.modules import lifecycle
-from app.observability import router as observability_router
-from app.modules.loader import default_projects_root, register_project_routers
-from app.modules.manifest import ProjectModuleError
+from app import api
+from app import config
+from app import lifecycle
+from app.plugins import loader
+from app.plugins import manifest
 
-logger = logging.getLogger("a7las")
+_logger = logging.getLogger(__name__)
 
 
-def create_app(projects_root: Path | None = None) -> FastAPI:
-    """Create the platform app and mount every enabled project.
-
-    An invalid enabled project raises ``ProjectModuleError`` before this
-    function returns. The raised error names the manifest or plugin problem.
-    """
-    application = FastAPI(
-        title="Home Lab Dashboard API", lifespan=lifecycle.project_lifespan
+def create_app(projects_root: pathlib.Path | None = None) -> fastapi.FastAPI:
+    """建立平台並掛載啟用專案；無效專案使建立流程失敗。"""
+    application = fastapi.FastAPI(
+        title="Home Lab Dashboard API", lifespan=lifecycle.lifespan
     )
     application.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        cors.CORSMiddleware,
+        allow_origins=list(config.CORS_ALLOW_ORIGINS),
         allow_credentials=True,
-        allow_methods=["GET"],
+        allow_methods=list(config.CORS_ALLOW_METHODS),
         allow_headers=["*"],
     )
-    application.include_router(health.router, prefix="/api", tags=["health"])
-    application.include_router(observability_router.router, prefix="/api", tags=["observability"])
-    root = default_projects_root() if projects_root is None else Path(projects_root)
+    application.include_router(api.router, prefix="/api")
+    root = (
+        loader.default_projects_root()
+        if projects_root is None
+        else pathlib.Path(projects_root)
+    )
     try:
-        register_project_routers(application, root)
-    except ProjectModuleError:
-        logger.exception("Refusing to start because a project module failed to load")
+        loader.register_project_routers(application, root)
+    except manifest.ProjectModuleError:
+        _logger.exception(
+            "Refusing to start because a project module failed to load"
+        )
         raise
     return application
 

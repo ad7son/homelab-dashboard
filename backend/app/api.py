@@ -7,6 +7,9 @@ import time
 from typing import Literal
 
 import fastapi
+import pydantic
+
+from app import config
 
 from app.observability import health
 from app.observability import models
@@ -15,7 +18,24 @@ from app.observability import storage
 router = fastapi.APIRouter()
 
 
-@router.get("/project-health", response_model=models.HealthOverview)
+class HealthResponse(pydantic.BaseModel):
+    """平台存活查詢的回應，不代表各專案功能正常。"""
+
+    status: str
+    version: str
+
+
+@router.get("/health", response_model=HealthResponse, tags=["health"])
+def read_status() -> HealthResponse:
+    """回報平台存活狀態與版本，不操作專案硬體或事件資料庫。"""
+    return HealthResponse(status="ok", version=config.A7LAS_VERSION)
+
+
+@router.get(
+    "/project-health",
+    response_model=models.HealthOverview,
+    tags=["observability"],
+)
 def read_health(request: fastapi.Request) -> models.HealthOverview:
     """回傳目前啟用專案的健康狀態；每次依持久化證據重新判定。"""
     if not storage.EventStore().path.exists():
@@ -32,7 +52,9 @@ def read_health(request: fastapi.Request) -> models.HealthOverview:
 
 
 @router.get(
-    "/project-health/{project_id}", response_model=models.ProjectHealthReport
+    "/project-health/{project_id}",
+    response_model=models.ProjectHealthReport,
+    tags=["observability"],
 )
 def read_project(
     project_id: str, request: fastapi.Request
@@ -47,7 +69,7 @@ def read_project(
     raise fastapi.HTTPException(404, "Project not found")
 
 
-@router.get("/logs")
+@router.get("/logs", tags=["observability"])
 def read_logs(
     project_id: str | None = None,
     feature_id: str | None = None,

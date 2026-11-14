@@ -6,10 +6,10 @@ import pytest
 from fastapi import testclient
 
 from app import main
-from app.modules import manifest
+from app.plugins import manifest
 from app.observability import models
 from app.observability import storage
-from tests import test_module_loader
+from tests.plugins import test_loader
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +21,7 @@ def isolated_project_modules():
             del sys.modules[name]
 
 
-_PLUGIN = test_module_loader.STATUS_PLUGIN + """
+_PLUGIN = test_loader.STATUS_PLUGIN + """
 from app.observability import models
 
 def get_health_features():
@@ -30,20 +30,20 @@ def get_health_features():
 
 
 def test_new_project_automatically_appears_in_platform_health(tmp_path):
-    test_module_loader._write_project(
-        tmp_path, "alpha", test_module_loader._manifest(), _PLUGIN
+    test_loader._write_project(
+        tmp_path, "alpha", test_loader._manifest(), _PLUGIN
     )
-    test_module_loader._write_project(
+    test_loader._write_project(
         tmp_path,
         "beta",
-        test_module_loader._manifest(
+        test_loader._manifest(
             id="beta",
             name="Beta",
             pythonPackage="src",
             routeBase="/beta",
             apiPrefix="/api/beta",
         ),
-        test_module_loader.STATUS_PLUGIN,
+        test_loader.STATUS_PLUGIN,
     )
     app = main.create_app(tmp_path)
     with testclient.TestClient(app) as client:
@@ -93,12 +93,12 @@ def test_new_project_automatically_appears_in_platform_health(tmp_path):
 )
 def test_invalid_feature_declarations_reject_project(tmp_path, declaration):
     source = (
-        test_module_loader.STATUS_PLUGIN
+        test_loader.STATUS_PLUGIN
         + "\nfrom app.observability import models\n"
         + declaration
     )
-    test_module_loader._write_project(
-        tmp_path, "alpha", test_module_loader._manifest(), source
+    test_loader._write_project(
+        tmp_path, "alpha", test_loader._manifest(), source
     )
     with pytest.raises(manifest.ProjectModuleError, match="alpha"):
         main.create_app(tmp_path)
@@ -125,11 +125,11 @@ def test_corrupt_store_returns_503_instead_of_fake_unknown(
     ],
 )
 def test_observability_api_namespaces_are_reserved(tmp_path, prefix):
-    test_module_loader._write_project(
+    test_loader._write_project(
         tmp_path,
         "alpha",
-        test_module_loader._manifest(apiPrefix=prefix),
-        test_module_loader.STATUS_PLUGIN,
+        test_loader._manifest(apiPrefix=prefix),
+        test_loader.STATUS_PLUGIN,
     )
     with pytest.raises(manifest.ProjectModuleError, match="reserved"):
         main.create_app(tmp_path)
@@ -144,3 +144,25 @@ def test_missing_store_reports_unavailable_without_creating_file(
     assert client.get("/api/project-health").status_code == 503
     assert client.get("/api/logs").status_code == 503
     assert not path.exists()
+
+
+def test_cors_uses_platform_configuration(tmp_path, monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "CORS_ALLOW_ORIGINS", ("http://example.test",))
+    with testclient.TestClient(main.create_app(tmp_path)) as client:
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://example.test",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 200
+        assert (
+            response.headers["access-control-allow-origin"]
+            == "http://example.test"
+        )
+        assert (
+            client.get("/api/health").json()["version"] == config.A7LAS_VERSION
+        )

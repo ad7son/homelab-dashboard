@@ -4,7 +4,7 @@ import importlib
 import pathlib
 
 from app import main
-from app.modules import loader
+from app.plugins import loader
 
 
 def module(name):

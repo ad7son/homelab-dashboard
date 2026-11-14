@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from app.config import A7LAS_VERSION
 from app.main import app
-host_reader = monitor_module('collector.host_reader')
+
+host_reader = monitor_module("collector.host_reader")
 
 client = TestClient(app)
 

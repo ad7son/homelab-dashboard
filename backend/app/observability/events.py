@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import logging
 import sqlite3
 import sys
 import time
 import traceback
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any
 
-from app.observability import config
 from app.observability import models
 from app.observability import storage
 
@@ -231,43 +229,3 @@ def capture_logs(
         for item, previous in formatters:
             item.setFormatter(previous)
         root.setLevel(old_level)
-
-
-async def _cleanup(stop: asyncio.Event) -> None:
-    """每天刪除過期事件；不刪最新狀態，啟動時不執行。"""
-    while not stop.is_set():
-        try:
-            await asyncio.wait_for(stop.wait(), config.CLEANUP_INTERVAL_SECONDS)
-        except TimeoutError:
-            days = config.EVENT_RETENTION_DAYS
-            if days is None:
-                continue
-            if not isinstance(days, int) or isinstance(days, bool) or days <= 0:
-                _logger.error("Invalid EVENT_RETENTION_DAYS; skipping cleanup")
-                continue
-            try:
-                storage.EventStore().delete_before(
-                    int(time.time() * 1000) - days * 86_400_000
-                )
-            except (OSError, sqlite3.Error):
-                _logger.exception("Event cleanup failed")
-
-
-@contextlib.asynccontextmanager
-async def lifespan(
-    projects: Sequence[models.ProjectDefinition],
-    namespaces: Sequence[tuple[str, str]],
-) -> AsyncIterator[None]:
-    """平台啟動時登記功能並接管紀錄，專案退出後再釋放共用資源。"""
-    with capture_logs(namespaces=namespaces):
-        try:
-            storage.EventStore().register(projects, int(time.time() * 1000))
-        except (OSError, sqlite3.Error):
-            _logger.exception("Cannot initialize shared event storage")
-        stop = asyncio.Event()
-        maintenance = asyncio.create_task(_cleanup(stop))
-        try:
-            yield
-        finally:
-            stop.set()
-            await maintenance

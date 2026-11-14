@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.modules.manifest import ProjectModuleError
-from tests.test_module_loader import STATUS_PLUGIN, _manifest, _write_project
+from app.plugins.manifest import ProjectModuleError
+from tests.plugins.test_loader import STATUS_PLUGIN, _manifest, _write_project
 
 BROKEN_PLUGIN = """
 from fastapi import APIRouter
