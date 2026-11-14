@@ -1,13 +1,12 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { PageContainer } from './PageContainer';
-import { PageHeader } from './PageHeader';
+import { PageContainer } from '../layout/PageContainer';
+import { PageHeader } from '../layout/PageHeader';
 
 interface ProjectErrorBoundaryProps {
   children: ReactNode;
-  resetKey: string;
-  onReset?: () => void;
+  onRetry?: () => void;
 }
 
 interface ProjectErrorBoundaryState {
@@ -28,13 +27,6 @@ export class ProjectErrorBoundary extends Component<
     console.error('Project page failed to render', error, info.componentStack);
   }
 
-  componentDidUpdate(previous: ProjectErrorBoundaryProps): void {
-    if (previous.resetKey !== this.props.resetKey && this.state.error) {
-      this.setState({ error: null });
-      this.props.onReset?.();
-    }
-  }
-
   render() {
     const { error } = this.state;
     if (!error) {
@@ -47,6 +39,9 @@ export class ProjectErrorBoundary extends Component<
           title="This project page could not be loaded"
           description={message}
         />
+        {this.props.onRetry ? (
+          <button type="button" onClick={this.props.onRetry}>Retry</button>
+        ) : null}
         <p>
           <Link to="/">Back to home</Link>
           {' · '}

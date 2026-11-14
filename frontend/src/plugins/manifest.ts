@@ -1,28 +1,34 @@
-import { isAllowedProjectIcon } from './icons'
-import type {
-  DiscoveredProject,
-  ProjectFrontendModule,
-  ProjectManifest,
-  ProjectNavLink,
-  ProjectNavSection,
-} from './types'
+import { isAllowedProjectIcon } from './icons';
+import type { ProjectIconName } from './icons';
 
-/**
- * Vite rewrites these literals at build time. Patterns must stay relative
- * string literals and use forward slashes, including on Windows.
- * An empty projects directory produces an empty map.
- */
-const manifestModules = import.meta.glob('../../../projects/*/project.json', {
-  eager: true,
-  import: 'default',
-})
+export interface ProjectNavItem {
+  path: string
+  label: string
+  icon: ProjectIconName
+  end: boolean
+  documentTitle: string
+}
 
-const frontendModules = import.meta.glob(
-  '../../../projects/*/frontend/index.tsx',
-)
+export interface ProjectNav {
+  section: string
+  order: number
+  items: ProjectNavItem[]
+}
 
-const MANIFEST_KEY = /\/projects\/([^/]+)\/project\.json$/
-const FRONTEND_KEY = /\/projects\/([^/]+)\/frontend\/index\.tsx$/
+export interface ProjectManifest {
+  schemaVersion: 1
+  id: string
+  name: string
+  description: string
+  pythonPackage: string
+  routeBase: string
+  apiPrefix: string
+  legacyRouteBases: string[]
+  legacyApiPrefix: string | null
+  enabled: boolean
+  nav: ProjectNav
+}
+
 
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const PACKAGE_PATTERN = /^[a-z][a-z0-9_]*$/
@@ -96,153 +102,7 @@ export class ProjectModuleError extends Error {
   }
 }
 
-interface FrontendLoader {
-  (this: void): Promise<unknown>
-}
-
-export interface ProjectDiscoveryResult {
-  projects: DiscoveredProject[]
-  error: string | null
-}
-
-/**
- * Read manifests from projects/{id}/project.json.
- * Enabled projects are returned in nav.order, then id order.
- * The shell turns the result into routes. This function does not mount them.
- */
-export function loadProjects(): DiscoveredProject[] {
-  const frontendById = indexFrontendLoaders(frontendModules)
-  const errors: string[] = []
-  const manifests: ProjectManifest[] = []
-
-  for (const [key, raw] of Object.entries(manifestModules)) {
-    const directoryName = projectIdFromKey(key, MANIFEST_KEY, 'project.json')
-    try {
-      manifests.push(validateManifest(unwrapModule(raw), directoryName, key))
-    } catch (error) {
-      errors.push(errorMessage(error))
-    }
-  }
-  if (errors.length > 0) {
-    throw new ProjectModuleError(errors.join('\n'))
-  }
-
-  const enabled = manifests.filter((manifest) => manifest.enabled)
-  rejectDuplicates(enabled)
-  for (const manifest of enabled) {
-    if (!frontendById.has(manifest.id)) {
-      errors.push(
-        `project '${manifest.id}': missing frontend/index.tsx ` +
-          `(expected projects/${manifest.id}/frontend/index.tsx)`,
-      )
-    }
-  }
-  if (errors.length > 0) {
-    throw new ProjectModuleError(errors.join('\n'))
-  }
-
-  enabled.sort((left, right) => {
-    if (left.nav.order !== right.nav.order) {
-      return left.nav.order - right.nav.order
-    }
-    if (left.id < right.id) return -1
-    if (left.id > right.id) return 1
-    return 0
-  })
-
-  return enabled.map((manifest) => {
-    const load = frontendById.get(manifest.id)
-    if (load == null) {
-      throw new ProjectModuleError(
-        `project '${manifest.id}': missing frontend/index.tsx`,
-      )
-    }
-    return {
-      manifest,
-      loadFrontend: () =>
-        load().then((imported) => unwrapFrontendModule(imported, manifest.id)),
-    }
-  })
-}
-
-/** Load projects for the shell. A discovery failure is reported, not hidden. */
-export function loadDiscoveredProjects(): ProjectDiscoveryResult {
-  try {
-    return { projects: loadProjects(), error: null }
-  } catch (error) {
-    console.error(error)
-    return {
-      projects: [],
-      error: error instanceof Error ? error.message : String(error),
-    }
-  }
-}
-
-/** Group enabled projects into sidebar sections. Does not render navigation. */
-export function buildProjectNavigation(
-  projects: readonly DiscoveredProject[],
-): ProjectNavSection[] {
-  const sections = new Map<string, ProjectNavSection>()
-  for (const project of projects) {
-    const nav = project.manifest.nav
-    const existing = sections.get(nav.section)
-    const section = existing ?? {
-      section: nav.section,
-      order: nav.order,
-      links: [],
-    }
-    if (existing != null && nav.order < existing.order) {
-      section.order = nav.order
-    }
-    for (const item of nav.items) {
-      const link: ProjectNavLink = {
-        projectId: project.manifest.id,
-        to: joinRoute(project.manifest.routeBase, item.path),
-        label: item.label,
-        icon: item.icon,
-        end: item.end,
-        documentTitle: item.documentTitle,
-      }
-      section.links.push(link)
-    }
-    sections.set(nav.section, section)
-  }
-  return [...sections.values()].sort((left, right) => {
-    if (left.order !== right.order) return left.order - right.order
-    if (left.section < right.section) return -1
-    if (left.section > right.section) return 1
-    return 0
-  })
-}
-
-function indexFrontendLoaders(
-  modules: Record<string, unknown>,
-): Map<string, FrontendLoader> {
-  const loaders = new Map<string, FrontendLoader>()
-  for (const [key, loader] of Object.entries(modules)) {
-    if (typeof loader !== 'function') {
-      throw new ProjectModuleError(
-        `project frontend entry '${key}' was not loaded as a lazy module`,
-      )
-    }
-    const directoryName = projectIdFromKey(key, FRONTEND_KEY, 'frontend/index.tsx')
-    loaders.set(directoryName, loader as FrontendLoader)
-  }
-  return loaders
-}
-
-function projectIdFromKey(key: string, pattern: RegExp, label: string): string {
-  const match = key.replaceAll('\\', '/').match(pattern)
-  const directoryName = match?.[1]
-  if (directoryName == null || directoryName === '') {
-    throw new ProjectModuleError(
-      `unable to read project id from ${label} path '${key}'`,
-    )
-  }
-  return directoryName
-}
-
-function validateManifest(
+export function validateManifest(
   raw: unknown,
   directoryName: string,
   source: string,
@@ -480,73 +340,6 @@ function validateNav(raw: unknown, source: string): ProjectManifest['nav'] {
   return { section, order: nav.order, items }
 }
 
-function rejectDuplicates(manifests: readonly ProjectManifest[]): void {
-  const ids = new Map<string, string>()
-  const routes = new Map<string, string>()
-  const prefixes = new Map<string, string>()
-  for (const manifest of manifests) {
-    claim(ids, manifest.id, manifest.id, 'id')
-    claim(routes, manifest.routeBase, manifest.id, 'routeBase')
-    for (const legacyRoute of manifest.legacyRouteBases) {
-      claim(routes, legacyRoute, manifest.id, 'legacyRouteBases')
-    }
-    claim(prefixes, manifest.apiPrefix, manifest.id, 'apiPrefix')
-    if (manifest.legacyApiPrefix != null) {
-      claim(prefixes, manifest.legacyApiPrefix, manifest.id, 'legacyApiPrefix')
-    }
-  }
-}
-
-function claim(
-  seen: Map<string, string>,
-  value: string,
-  projectId: string,
-  fieldName: string,
-): void {
-  const previous = seen.get(value)
-  if (previous != null) {
-    throw new ProjectModuleError(
-      `duplicate ${fieldName} '${value}' used by projects '${previous}' and '${projectId}'`,
-    )
-  }
-  seen.set(value, projectId)
-}
-
-function unwrapFrontendModule(
-  imported: unknown,
-  projectId: string,
-): ProjectFrontendModule {
-  const candidate = unwrapModule(imported)
-  if (
-    candidate == null ||
-    typeof candidate !== 'object' ||
-    !('routes' in candidate) ||
-    !Array.isArray((candidate as { routes: unknown }).routes)
-  ) {
-    throw new ProjectModuleError(
-      `project '${projectId}': frontend/index.tsx must default-export { routes }`,
-    )
-  }
-  return candidate as ProjectFrontendModule
-}
-
-function unwrapModule(value: unknown): unknown {
-  if (
-    value != null &&
-    typeof value === 'object' &&
-    'default' in value &&
-    !('schemaVersion' in value)
-  ) {
-    return (value as { default: unknown }).default
-  }
-  return value
-}
-
-function joinRoute(routeBase: string, path: string): string {
-  if (path === '') return routeBase
-  return `${routeBase}/${path}`
-}
-
 function requiredString(value: unknown, source: string, fieldName: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ProjectModuleError(`${source}: ${fieldName} must be a non-empty string`)
@@ -565,7 +358,3 @@ function isReservedPath(value: string, reserved: readonly string[]): boolean {
   return reserved.some((item) => value === item || value.startsWith(`${item}/`))
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
-}

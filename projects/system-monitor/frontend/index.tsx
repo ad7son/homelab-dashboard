@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import type { ProjectFrontendModule } from '@shell/modules/types'
+import type { ProjectFrontendModule } from '@shell/plugins/loader'
 import './styles.css'
 
 const OverviewPage = lazy(() =>

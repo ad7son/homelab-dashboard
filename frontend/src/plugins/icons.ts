@@ -12,7 +12,7 @@ import {
 /**
  * Icons a project manifest is allowed to name.
  * Keep this list identical to ALLOWED_PROJECT_ICONS in
- * backend/app/modules/manifest.py.
+ * backend/app/plugins/manifest.py.
  */
 export const PROJECT_ICONS = {
   activity: Activity,

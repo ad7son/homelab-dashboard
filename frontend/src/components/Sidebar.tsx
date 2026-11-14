@@ -1,8 +1,8 @@
 import { Settings, X } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
-import { resolveProjectIcon } from '../../modules/icons';
-import { buildProjectNavigation } from '../../modules/loadProjects';
-import { useProjectRegistry } from '../../modules/ProjectRegistry';
+import { resolveProjectIcon } from '../plugins/icons';
+import { buildProjectNavigation } from '../plugins/navigation';
+import { useProjectRegistry } from '../plugins/registry';
 
 interface SidebarProps {
   id: string;

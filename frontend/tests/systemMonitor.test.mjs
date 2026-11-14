@@ -1,44 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import ts from 'typescript';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-// 以現有 TypeScript 編譯器載入原始碼，不另引入測試框架或複製實作。
-const root = new URL('../../projects/system-monitor/frontend/', import.meta.url);
-const loaded = new Map();
-async function moduleUrl(url) {
-  const key = url.href;
-  if (loaded.has(key)) return loaded.get(key);
-  const source = await readFile(url, 'utf8');
-  let output = url.pathname.endsWith('.json') ? `export default ${source}` : ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX },
-    fileName: url.pathname,
-  }).outputText;
-  const imports = [...output.matchAll(/from\s+['"]([^'"]+)['"]/g)];
-  for (const match of imports) {
-    const specifier = match[1];
-    let target;
-    if (specifier.startsWith('.') || specifier.startsWith('@shell/')) {
-      const path = specifier.startsWith('@shell/')
-        ? new URL('../src/' + specifier.slice(7), import.meta.url) : new URL(specifier, url);
-      if (!/\.(ts|tsx|json)$/.test(path.pathname)) {
-        try { await readFile(new URL(path.href + '.ts')); path.pathname += '.ts'; }
-        catch { path.pathname += '.tsx'; }
-      }
-      target = await moduleUrl(path);
-    } else {
-      target = import.meta.resolve(specifier);
-    }
-    output = output.replaceAll(`'${specifier}'`, JSON.stringify(target)).replaceAll(`"${specifier}"`, JSON.stringify(target));
-  }
-  const target = 'data:text/javascript;base64,' + Buffer.from(output).toString('base64');
-  loaded.set(key, target);
-  return target;
+import { loadSource } from './helpers.mjs';
+
+function load(name) {
+  return loadSource(new URL('../../projects/system-monitor/frontend/' + name, import.meta.url));
 }
-async function load(name) { return import(await moduleUrl(new URL(name, root))); }
 const { parseOverview, getOverview } = await load('api/overview.ts');
 const { sampleStatus } = await load('hooks/useOverview.ts');
 const { getHistory, parseHistory } = await load('api/history.ts');
