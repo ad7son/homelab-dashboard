@@ -10,6 +10,8 @@ import pathlib
 import sys
 from collections.abc import Iterator
 
+from app.observability import events
+
 from .. import config
 
 _logger = logging.getLogger(__name__)
@@ -77,7 +79,15 @@ async def supervise(settings: config.Settings, stop: asyncio.Event) -> None:
                     await _run_child(settings, stop)
         except CollectorInUseError:
             pass  # 其他 API worker 是管理者，本 worker 等待接手。
-        except OSError:
+        except OSError as exc:
+            events.record(
+                "system-monitor",
+                "metrics-collection",
+                outcome="failure",
+                message="無法啟動採集器",
+                error=exc,
+                source=__name__,
+            )
             _logger.exception("Cannot start collector; will retry")
         if not stop.is_set():
             try:
@@ -90,6 +100,11 @@ async def _run_child(settings: config.Settings, stop: asyncio.Event) -> None:
     """啟動一個子程序，等待停止或意外退出，最後回收程序及等待任務。"""
     environment = dict(os.environ)
     environment["A7LAS_METRICS_DB_PATH"] = str(settings.database_path)
+    # 子程序與獨立 CLI 共用平台套件；不改變平台程序的 sys.path。
+    platform_backend = pathlib.Path(__file__).resolve().parents[5] / "backend"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(platform_backend), environment.get("PYTHONPATH", "")))
+    )
     child = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -107,6 +122,15 @@ async def _run_child(settings: config.Settings, stop: asyncio.Event) -> None:
             (exited, stopping), return_when=asyncio.FIRST_COMPLETED
         )
         if exited.done() and not stop.is_set():
+            if child.returncode != 2:
+                events.record(
+                    "system-monitor",
+                    "metrics-collection",
+                    outcome="failure",
+                    message="採集器意外退出",
+                    source=__name__,
+                    context={"returncode": child.returncode},
+                )
             _logger.warning(
                 "Collector exited with code %s; will retry", child.returncode
             )

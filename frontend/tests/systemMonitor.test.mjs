@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 import { createElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 // 以現有 TypeScript 編譯器載入原始碼，不另引入測試框架或複製實作。
@@ -20,8 +21,9 @@ async function moduleUrl(url) {
   for (const match of imports) {
     const specifier = match[1];
     let target;
-    if (specifier.startsWith('.')) {
-      const path = new URL(specifier, url);
+    if (specifier.startsWith('.') || specifier.startsWith('@shell/')) {
+      const path = specifier.startsWith('@shell/')
+        ? new URL('../src/' + specifier.slice(7), import.meta.url) : new URL(specifier, url);
       if (!/\.(ts|tsx|json)$/.test(path.pathname)) {
         try { await readFile(new URL(path.href + '.ts')); path.pathname += '.ts'; }
         catch { path.pathname += '.tsx'; }
@@ -135,4 +137,35 @@ test('503 and malformed history responses surface useful errors', async (context
   await assert.rejects(api.getSystemOverview(), /採集器/);
   globalThis.fetch = async () => new Response('{"samples":[]}', {status: 200});
   await assert.rejects(api.getHistoricalMetrics('1h'), /格式/);
+});
+
+
+const { ProjectHealthSection } = await load('components/health/ProjectHealthSection.tsx');
+const { FeatureDiagnostics } = await load('components/health/FeatureDiagnostics.tsx');
+const feature = {
+  id: 'query', name: 'Query', description: 'Actual query results', criteria: 'Last execution',
+  status: 'unknown', message: 'Never executed', checked_at_ms: now, last_success_at_ms: null,
+  duration_ms: null, source: 'platform event log', raw_data: {last_event: null}, error: null,
+};
+
+test('health overview automatically renders other registered projects', () => {
+  const projects = [
+    {project_id: 'system-monitor', project_name: 'System Monitor', checked_at_ms: now, features: [feature]},
+    {project_id: 'new-project', project_name: 'New Project', checked_at_ms: now, features: []},
+  ];
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null,
+    createElement(ProjectHealthSection, {health: {projects, data: null, error: null, loading: false, refresh() {}}})));
+  assert.ok(html.includes('New Project'));
+  assert.ok(html.includes('/system-monitor/health/new-project'));
+  assert.ok(html.includes('尚未宣告監測功能'));
+  assert.ok(!html.includes('尚未啟用'));
+});
+test('diagnostics point at the shared API and show unknown execution time honestly', () => {
+  const html = renderToStaticMarkup(createElement(FeatureDiagnostics, {
+    feature, report: {project_id: 'new-project', project_name: 'New Project', checked_at_ms: now, features: [feature]},
+    onRefresh() {}, refreshing: false,
+  }));
+  assert.ok(html.includes('/api/project-health/new-project'));
+  assert.ok(html.includes('尚無執行紀錄'));
+  assert.ok(!html.includes('/feature-health'));
 });

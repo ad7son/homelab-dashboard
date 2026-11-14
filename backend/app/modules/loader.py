@@ -20,6 +20,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 
 from app.modules import lifecycle
+from app.observability import models as observability_models
 from app.modules.manifest import ProjectManifest, ProjectModuleError, load_project_manifest
 
 # backend/app/modules/loader.py -> parents[3] is the repository root.
@@ -116,6 +117,8 @@ def register_project_routers(
     session = _ImportSession(namespaces=[], modules_before=set(sys.modules))
     loaded: list[LoadedProjectRouter] = []
     lifespans: list[tuple[str, lifecycle.Lifespan]] = []
+    health_projects: list[observability_models.ProjectDefinition] = []
+    namespaces: list[tuple[str, str]] = []
     try:
         for manifest in manifests:
             project_dir = projects_root / manifest.id
@@ -123,6 +126,17 @@ def register_project_routers(
             router = _import_build_router(session, project_dir, manifest)
             package = project_package_name(project_dir, manifest.python_package)
             module_name = f"{package}.plugin"
+            feature_factory = getattr(sys.modules[module_name], "get_health_features", None)
+            if feature_factory is not None and not callable(feature_factory):
+                raise ProjectModuleError(f"project '{manifest.id}': get_health_features must be callable")
+            try:
+                health_projects.append(observability_models.ProjectDefinition(
+                    id=manifest.id, name=manifest.name,
+                    features=feature_factory() if feature_factory else (),
+                ))
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                raise ProjectModuleError(f"project '{manifest.id}': invalid health features ({exc})") from exc
+            namespaces.append((package, manifest.id))
             factory = getattr(sys.modules[module_name], "lifespan", None)
             if factory is not None:
                 if not callable(factory):
@@ -164,6 +178,8 @@ def register_project_routers(
         ) from exc
     previous = getattr(app.state, "project_lifespans", ())
     app.state.project_lifespans = (*previous, *lifespans)
+    app.state.health_projects = (*getattr(app.state, "health_projects", ()), *health_projects)
+    app.state.project_log_namespaces = (*getattr(app.state, "project_log_namespaces", ()), *namespaces)
     return manifests
 
 

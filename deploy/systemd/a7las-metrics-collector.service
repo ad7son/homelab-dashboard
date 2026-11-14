@@ -9,6 +9,7 @@ User=adson
 Group=adson
 WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
 Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/system-monitor/metrics.db
+Environment=PYTHONPATH=/srv/homelab-dashboard/backend
 ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector
 Restart=on-failure
 RestartSec=5

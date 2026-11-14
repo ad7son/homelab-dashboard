@@ -28,7 +28,7 @@ projects/system-monitor/backend/
 
 | 模組 | 責任 |
 |---|---|
-| `plugin.py` | 載入專案、掛載 API，管理專案生命週期 |
+| `plugin.py` | 掛載 API、管理採集器生命週期、宣告監測功能 |
 | `api/` | 驗證查詢參數、安排歷史彙整粒度、建立 HTTP 回應 |
 | `collector/` | 採集器。讀取硬體、安排採集、保存結果與觸發過期清理 |
 | `database/` | 管理 SQLite 連線、資料表與 SQL 操作 |

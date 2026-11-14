@@ -9,6 +9,8 @@ import signal
 import sys
 import threading
 
+from app.observability import events
+
 from .. import config
 from . import process
 from . import runner
@@ -38,6 +40,12 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    with events.capture_logs(project_id="system-monitor"):
+        return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
+    """建立停止監聽、持有程序鎖並執行採集，結束時還原訊號。"""
     stop_event = threading.Event()
 
     def stop(signum: int, frame: object) -> None:
@@ -64,7 +72,15 @@ def main() -> int:
         logging.getLogger(__name__).info("Another collector is already running")
         return 2
     # 工作隔離邊界：記錄原始例外後繼續或回傳失敗退出碼。
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        events.record(
+            "system-monitor",
+            "metrics-collection",
+            outcome="failure",
+            message="採集器啟動或執行失敗",
+            error=exc,
+            source=__name__,
+        )
         logging.getLogger(__name__).exception("Collector stopped with an error")
         return 1
     finally:

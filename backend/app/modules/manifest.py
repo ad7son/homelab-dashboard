@@ -33,7 +33,7 @@ ALLOWED_PROJECT_ICONS = frozenset(
 RESERVED_ROUTE_BASES = frozenset({"/settings"})
 
 # Platform endpoints that must stay outside every project apiPrefix.
-RESERVED_API_PREFIXES = frozenset({"/api/health"})
+RESERVED_API_PREFIXES = frozenset({"/api/health", "/api/project-health", "/api/logs"})
 
 # The pre-modular dashboard served monitoring at /api. Only system-monitor
 # may keep that prefix. Other projects must use a namespaced /api/{id} prefix.
@@ -361,7 +361,7 @@ def _validate_namespaced_api_prefix(value: object) -> str:
     if value == "/api" or value == "/api/":
         raise ValueError("must name a project namespace and cannot be '/api'")
     if _is_reserved_path(value, RESERVED_API_PREFIXES):
-        raise ValueError("'/api/health' is reserved by the platform")
+        raise ValueError(f"'{value}' is reserved by the platform")
     if _API_PREFIX_PATTERN.fullmatch(value) is None:
         raise ValueError(
             "must start with '/api/' and use kebab-case segments "

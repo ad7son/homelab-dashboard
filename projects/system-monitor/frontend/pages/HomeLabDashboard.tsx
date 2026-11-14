@@ -23,7 +23,7 @@ export function HomeLabDashboard() {
   const [monitoringMode, setMonitoringMode] = useState<MonitoringMode>('live');
   const [refreshToken, setRefreshToken] = useState(0);
   const health = useProjectHealth(refreshToken);
-  usePageScrollPosition(data !== null && (health.data !== null || !health.loading));
+  usePageScrollPosition((data !== null || !loading) && !health.loading);
 
   // 同時刷新主機資訊、歷史圖表與實際功能健康報告。
   const refreshPage = () => {
@@ -35,6 +35,7 @@ export function HomeLabDashboard() {
     return (
       <PageContainer>
         <HomeLabLoadState mode="loading" />
+        <ProjectHealthSection health={health} />
       </PageContainer>
     );
   }
@@ -48,6 +49,7 @@ export function HomeLabDashboard() {
           onRefresh={refreshPage}
         />
         <HomeLabLoadState mode="failed" error={error} onRetry={refresh} />
+        <ProjectHealthSection health={health} />
       </PageContainer>
     );
   }

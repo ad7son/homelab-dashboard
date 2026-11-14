@@ -10,6 +10,8 @@ from typing import Literal
 
 import fastapi
 
+from app.observability import events
+
 from ... import config
 from ...database import repository
 from .. import schemas
@@ -60,22 +62,34 @@ def read_history(
     if (end_ms - start_ms) / max(1, interval_ms) > _MAX_RAW_SAMPLES:
         minimum_bucket = math.ceil((end_ms - start_ms) / (_MAX_RAW_SAMPLES - 1))
         bucket_ms = max(bucket_ms, minimum_bucket)
-    store = repository.HostRepository(
-        settings.database_path, settings.sqlite_timeout_seconds
-    )
-    try:
-        samples = store.get_history(start_ms, end_ms, bucket_ms)
-    except sqlite3.Error as exc:
-        _logger.exception("Historical database unavailable")
-        raise fastapi.HTTPException(
-            503, "Historical metrics database unavailable"
-        ) from exc
-    return schemas.History(
-        range=selected_range,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        interval_seconds=(bucket_ms or interval_ms) / 1000,
-        samples=[
-            schemas.HistorySample.model_validate(sample) for sample in samples
-        ],
-    )
+    with events.execution(
+        "system-monitor",
+        "history-query",
+        source=__name__,
+        context={
+            "range": selected_range,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "bucket_ms": bucket_ms,
+        },
+    ):
+        store = repository.HostRepository(
+            settings.database_path, settings.sqlite_timeout_seconds
+        )
+        try:
+            samples = store.get_history(start_ms, end_ms, bucket_ms)
+        except sqlite3.Error as exc:
+            _logger.exception("Historical database unavailable")
+            raise fastapi.HTTPException(
+                503, "Historical metrics database unavailable"
+            ) from exc
+        return schemas.History(
+            range=selected_range,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            interval_seconds=(bucket_ms or interval_ms) / 1000,
+            samples=[
+                schemas.HistorySample.model_validate(sample)
+                for sample in samples
+            ],
+        )

@@ -296,7 +296,7 @@ Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, or a final `HTTP m
 `GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
 
 System Monitor 原始碼位於 `projects/system-monitor/backend/src/`，採用
-`api/`、`collector/`、`database/` 三部分。`plugin.py` 僅提供平台掛載入口。
+`api/`、`collector/`、`database/` 三部分。`plugin.py` 提供平台掛載、採集器生命週期與健康功能宣告。
 API 只查 SQLite，獨立採集器使用 `python -m src.collector`。
 
 SQL 集中於 `database/repository.py`；連線與建表位於
@@ -308,6 +308,11 @@ SQL 集中於 `database/repository.py`；連線與建表位於
 採集器使用 OS 程序鎖；POSIX 使用 flock，Windows 使用 byte-range lock。
 Linux unit 已改為 `python -m src.collector`，修改檔案不代表已部署到伺服器。
 
-目前專案健康度的前端設計與路由保留，後端檢測 API 已移除，待共用 log
-系統完成後重新串接。前端與新 API 的差異已列於
-[System Monitor 後端](../projects/system-monitor/backend/README.md)。
+專案可在 plugin 提供 `get_health_features()`，回傳共用
+`app.observability.models.FeatureDefinition` 集合。未宣告時仍列出專案，
+但不產生假成功。定期功能使用 `scheduled` 並指定最大成功間隔；
+查詢功能使用 `request`，以最近實際執行結果為準。
+
+共用 `/api/project-health`、`/api/project-health/{project_id}`、`/api/logs`
+保留給平台，專案不可覆蓋。接入範例與事件契約見
+[共用事件系統](../backend/app/observability/README.md)。

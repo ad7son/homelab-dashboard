@@ -34,7 +34,7 @@ const NAV_PATH_PATTERN =
   /^(?:[a-z0-9]+(?:-[a-z0-9]+)*)(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/
 
 const RESERVED_ROUTE_BASES = ['/settings']
-const RESERVED_API_PREFIXES = ['/api/health']
+const RESERVED_API_PREFIXES = ['/api/health', '/api/project-health', '/api/logs']
 const LEGACY_API_ROOT = '/api'
 const LEGACY_API_ROOT_PROJECT_ID = 'system-monitor'
 const MANIFEST_FIELDS = new Set([
@@ -341,7 +341,7 @@ function validateApiPrefix(apiPrefix: string, source: string, fieldName: string)
   }
   if (isReservedPath(apiPrefix, RESERVED_API_PREFIXES)) {
     throw new ProjectModuleError(
-      `${source}: ${fieldName} '/api/health' is reserved by the platform`,
+      `${source}: ${fieldName} '${apiPrefix}' is reserved by the platform`,
     )
   }
   if (containsUnsafePath(apiPrefix) || !API_PREFIX_PATTERN.test(apiPrefix)) {

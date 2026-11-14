@@ -8,6 +8,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from app.observability import events
+
 from ..database import repository
 from .readers import cpu
 from .readers import disk_io
@@ -28,13 +30,15 @@ class HostReader:
         self._network = network.NetworkReader()
         self._gpu = gpu.GpuReader(gpu_timeout_seconds)
         self._disk = disk_io.DiskIoReader()
+        self._network_interface: str | None = None
 
     def _read_safely(
-        self, read: Callable[[], dict[str, Any]]
+        self, read: Callable[[], dict[str, Any]], feature_id: str | None = None
     ) -> dict[str, Any]:
         """隔離單項硬體錯誤，保留其他讀取器結果並記錄堆疊。"""
+        started = time.perf_counter()
         try:
-            return {
+            result = {
                 key: (
                     None
                     if isinstance(value, float) and not math.isfinite(value)
@@ -43,9 +47,73 @@ class HostReader:
                 for key, value in read().items()
             }
         # 工作隔離邊界：記錄原始例外後繼續或回傳失敗退出碼。
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if feature_id:
+                events.record(
+                    "system-monitor",
+                    feature_id,
+                    outcome="failure",
+                    message="硬體讀取失敗",
+                    error=exc,
+                    source=read.__module__ + "." + read.__qualname__,
+                    duration_ms=(time.perf_counter() - started) * 1000,
+                )
             _logger.exception("Host reader failed: %s", read.__qualname__)
             return {}
+        if feature_id:
+            outcome, message = self._result(feature_id, result)
+            events.record(
+                "system-monitor",
+                feature_id,
+                outcome=outcome,
+                message=message,
+                source=read.__module__ + "." + read.__qualname__,
+                context=result,
+                duration_ms=(time.perf_counter() - started) * 1000,
+            )
+        return result
+
+    def _result(
+        self, feature_id: str, values: dict[str, Any]
+    ) -> tuple[str, str]:
+        """把來源明確狀態轉為事件結果；平台負責時效與最終健康判定。"""
+        keys_by_feature = {
+            "cpu": ("cpu_usage_percent",),
+            "memory": ("memory_usage_percent",),
+            "gpu": ("gpu_usage_percent",),
+            "network": (
+                "network_download_bytes_per_second",
+                "network_upload_bytes_per_second",
+            ),
+            "disk-io": (
+                "disk_read_bytes_per_second",
+                "disk_write_bytes_per_second",
+            ),
+        }
+        state = values.get(
+            "gpu_status" if feature_id == "gpu" else "disk_io_status"
+        )
+        states = {
+            "unsupported": ("unavailable", "平台不支援此硬體監測"),
+            "unavailable": ("unavailable", "目前沒有可用的硬體來源"),
+            "warming_up": ("unknown", "正在建立速率基準"),
+        }
+        if feature_id in {"gpu", "disk-io"} and state in states:
+            return states[state]
+        if feature_id == "network" and self._network_interface is None:
+            return "unavailable", "啟動時沒有可用的網路介面"
+        keys = keys_by_feature[feature_id]
+        if any(values.get(key) is None for key in keys):
+            return "unknown", "等待有效取樣或來源恢復"
+        invalid = any(
+            not isinstance(values[key], (int, float)) or values[key] < 0
+            for key in keys
+        )
+        if invalid or (
+            feature_id in {"cpu", "memory", "gpu"} and values[keys[0]] > 100
+        ):
+            return "failure", "來源回傳無效的指標"
+        return "success", "已取得有效指標，零使用率與零流量亦屬正常"
 
     def read_info(self) -> dict[str, Any]:
         """組合啟動時的基本資訊；僅由 runner 在啟動時呼叫一次。"""
@@ -58,6 +126,7 @@ class HostReader:
             self._gpu.read_info,
         ):
             info.update(self._read_safely(read))
+        self._network_interface = info.get("network_interface")
         return info
 
     def read(self) -> dict[str, Any]:
@@ -68,12 +137,12 @@ class HostReader:
             gpu_status="unavailable",
             disk_io_status="unavailable",
         )
-        for read in (
-            self._cpu.read,
-            self._memory.read,
-            self._network.read,
-            self._gpu.read,
-            self._disk.read,
+        for feature_id, read in (
+            ("cpu", self._cpu.read),
+            ("memory", self._memory.read),
+            ("network", self._network.read),
+            ("gpu", self._gpu.read),
+            ("disk-io", self._disk.read),
         ):
-            sample.update(self._read_safely(read))
+            sample.update(self._read_safely(read, feature_id))
         return sample

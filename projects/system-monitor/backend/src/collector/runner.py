@@ -8,6 +8,8 @@ import sqlite3
 import threading
 import time
 
+from app.observability import events
+
 from .. import config
 from ..database import connection
 from ..database import repository
@@ -44,7 +46,10 @@ def run(
     next_cleanup = next_sample + settings.cleanup_interval_seconds
     while not stop_event.is_set():
         try:
-            store.insert(reader.read())
+            with events.execution(
+                "system-monitor", "metrics-collection", source=__name__
+            ):
+                store.insert(reader.read())
         # 隔離單輪錯誤；單次診斷模式需向外回報失敗。
         except Exception:  # pylint: disable=broad-exception-caught
             _logger.exception("Metrics collection failed")

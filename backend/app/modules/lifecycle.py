@@ -9,6 +9,7 @@ from typing import AsyncContextManager
 import fastapi
 
 from app.modules import manifest
+from app.observability import events
 
 Lifespan = Callable[[fastapi.FastAPI], AsyncContextManager[None]]
 
@@ -21,6 +22,12 @@ async def project_lifespan(app: fastapi.FastAPI) -> AsyncIterator[None]:
     已啟動的專案仍會退出。未提供 lifespan 的專案不受影響。
     """
     async with contextlib.AsyncExitStack() as stack:
+        await stack.enter_async_context(
+            events.lifespan(
+                getattr(app.state, "health_projects", ()),
+                getattr(app.state, "project_log_namespaces", ()),
+            )
+        )
         for project_id, factory in getattr(app.state, "project_lifespans", ()):
             await stack.enter_async_context(
                 _enter_project(project_id, factory, app)

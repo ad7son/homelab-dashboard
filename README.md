@@ -75,7 +75,7 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 - Legacy base: `/homelab` redirects to `/system-monitor`, preserving child paths.
 - API prefix: `/api/system-monitor`
 - Legacy API prefix: `/api`, so older clients can keep calling `/api/overview` and the other monitoring paths
-- Live overview polls about every 3 seconds. Project Health 前端設計保留；後端檢測 API 已移除，待共用 log 系統完成後重新串接。目前健康區塊顯示尚未啟用，並暫停健康檢測請求。
+- Live overview polls about every 3 seconds. Project Health reads the platform shared event system and lists enabled projects automatically. Scheduled features have a reporting deadline; request features reflect their latest real execution.
 - Historical ranges are `15m`, `1h`, `24h`, and `7d`.
 - The collector samples every 3 seconds; retention is currently unlimited and can be set to a positive number of days.
 - The new backend stores basic information and dynamic metrics separately. No migration of development data is provided. The frontend maps the new API response to the existing dashboard and marks stale samples.
@@ -135,14 +135,14 @@ System Monitor API 由上方平台指令啟動；不再提供 `src.main:app`。
 需要獨立診斷時，仍可從儲存庫根目錄執行採集器（macOS／Linux）：
 
 ```bash
-PYTHONPATH=projects/system-monitor/backend backend/.venv/bin/python -m src.collector
+PYTHONPATH=backend:projects/system-monitor/backend backend/.venv/bin/python -m src.collector
 ```
 
 
 The collector remains a separate child process managed by the plugin. For standalone diagnosis in PowerShell:
 
 ```powershell
-$env:PYTHONPATH = "projects\system-monitor\backend"
+$env:PYTHONPATH = "backend;projects\system-monitor\backend"
 .\backend\.venv\Scripts\python.exe -m src.collector
 ```
 
@@ -187,6 +187,9 @@ Do not edit `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/router/r
 | Method | Path | Owner |
 | --- | --- | --- |
 | GET | `/api/health` | Platform. Body includes `status` and `version`. |
+| GET | `/api/project-health` | Platform. All enabled projects. |
+| GET | `/api/project-health/{project_id}` | Platform. Feature health and event evidence. |
+| GET | `/api/logs` | Platform. Event filters and cursor pagination. |
 | GET | `/api/system-monitor/overview` | System Monitor |
 | GET | `/api/system-monitor/history?range=15m` | System Monitor. `range` is `15m`, `1h`, `24h`, or `7d`. |
 
@@ -203,10 +206,11 @@ The collector unit in `deploy/systemd/a7las-metrics-collector.service` keeps the
 ```text
 WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
 Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/system-monitor/metrics.db
+Environment=PYTHONPATH=/srv/homelab-dashboard/backend
 ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector
 ```
 
-The interpreter remains the shared virtual environment. The working directory puts `src` on Python's module path. The collector uses the three-second interval and configurable retention in `src/config.py`; the unit now points to the new development database filename.
+The interpreter remains the shared virtual environment. The working directory puts `src` on Python's module path; `PYTHONPATH` exposes the shared platform logging module. The collector uses the three-second interval and configurable retention in `src/config.py`; the unit now points to the new development database filename.
 
 After copying the unit into systemd's unit directory, a Linux administrator can load it with:
 
@@ -231,3 +235,9 @@ Cursor AI Coding Agent implemented the module loader, the System Monitor move, a
 - The systemd unit requires Linux. Windows collector locking uses the OS byte-range lock and still needs validation on Windows.
 - The collector unit in this repository was updated. A live Linux service was not reloaded from this workspace.
 - The repository root contains a file named `exit`. It is a saved diff dump from commit `d2ed581`. It is not part of the application.
+
+## 共用事件與專案健康度
+
+共用格式、SQLite 儲存、健康判定與 API 由平台 `backend/app/observability/` 提供。
+專案在 plugin 宣告功能，並在實際執行處回報結果。架構與接入方式見
+[共用事件系統](backend/app/observability/README.md)。

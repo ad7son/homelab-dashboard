@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { formatDiagnosticResponse } from './diagnosticData';
-import projectManifest from '../../../project.json';
 import type { FeatureHealth, ProjectHealthReport } from '../../types/health';
 
 export interface DiagnosticProps {
@@ -33,11 +32,11 @@ export function FeatureDiagnostics({ feature, report, onRefresh, refreshing }: D
           <RefreshCw size={14} aria-hidden="true" />{refreshing ? '取得中…' : '重新取得'}
         </button>
       </div>
-      <div className="health-diagnostic-source"><span>GET</span><code>{projectManifest.apiPrefix}/feature-health</code><span>來源：<code>{feature.source}</code></span></div>
+      <div className="health-diagnostic-source"><span>GET</span><code>/api/project-health/{encodeURIComponent(report.project_id)}</code><span>來源：<code>{feature.source}</code></span></div>
       <dl className="health-diagnostic-meta">
-        <div><dt>檢查時間</dt><dd>{date(feature.checked_at_ms)}</dd></div>
+        <div><dt>判定時間</dt><dd>{date(feature.checked_at_ms)}</dd></div>
         <div><dt>最近成功</dt><dd>{date(feature.last_success_at_ms)}</dd></div>
-        <div><dt>檢查耗時</dt><dd>{feature.duration_ms} ms</dd></div>
+        <div><dt>最近執行耗時</dt><dd>{feature.duration_ms === null ? '尚無執行紀錄' : `${feature.duration_ms.toFixed(1)} ms`}</dd></div>
       </dl>
       {feature.error ? <div className="health-diagnostic-error" role="alert">
         <strong>{feature.error.type}</strong><p>{feature.error.message}</p>
