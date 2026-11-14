@@ -33,7 +33,8 @@ projects/system-monitor/backend/
 | `collector/` | 採集器。讀取硬體、安排採集、保存結果與觸發過期清理 |
 | `database/` | 管理 SQLite 連線、資料表與 SQL 操作 |
 
-API 與採集器分開執行，透過 SQLite 交換資料。採集器故障不會直接中止**查詢服務**，但最新資料會停止更新。共用設定集中於 [config.py](src/config.py)，兩個程序必須指向同一份資料庫。
+API 與採集器分開執行，透過 SQLite 交換資料。採集器故障不會直接中止**查詢服務**，但最新資料會停止更新。共用設定集中於 [config.py](src/config.py)，兩個程序必須指向同一份資料庫。執行資料預設集中於儲存庫根目錄的
+`data/system-monitor/`，與程式碼分開，整個 `data/` 不納入 Git。
 
 ## 3. 各模組架構
 

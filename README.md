@@ -146,7 +146,7 @@ $env:PYTHONPATH = "projects\system-monitor\backend"
 .\backend\.venv\Scripts\python.exe -m src.collector
 ```
 
-The default database path is `backend/data/system-monitor.db`. `A7LAS_METRICS_DB_PATH` overrides it. Windows uses a byte-range file lock; systemd deployment remains Linux-only.
+The default database path is `data/system-monitor/metrics.db`. `A7LAS_METRICS_DB_PATH` overrides it. Windows uses a byte-range file lock; systemd deployment remains Linux-only.
 
 ## Running Tests
 
@@ -202,7 +202,7 @@ The collector unit in `deploy/systemd/a7las-metrics-collector.service` keeps the
 
 ```text
 WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
-Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/system-monitor.db
+Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/system-monitor/metrics.db
 ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector
 ```
 

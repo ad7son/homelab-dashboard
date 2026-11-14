@@ -6,6 +6,7 @@ venv/
 .pytest_cache/
 
 # SQLite / local metrics data
+/data/
 *.db
 *.db-journal
 *.db-wal

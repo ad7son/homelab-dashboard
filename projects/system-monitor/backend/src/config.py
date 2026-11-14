@@ -15,15 +15,12 @@ GPU_TIMEOUT_SECONDS = 2.0
 
 
 def default_database_path() -> pathlib.Path:
-    """回傳平台 backend/data/system-monitor.db，不建立檔案。
-
-    使用新檔名，避免將開發階段的舊 schema 當成新資料庫。
-    """
+    """回傳根目錄 data/system-monitor/metrics.db，不建立檔案。"""
     return (
         pathlib.Path(__file__).resolve().parents[4]
-        / "backend"
         / "data"
-        / "system-monitor.db"
+        / "system-monitor"
+        / "metrics.db"
     )
 
 

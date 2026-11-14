@@ -1,5 +1,7 @@
 """驗證開發者設定與環境路徑覆寫。"""
 
+import pathlib
+
 import pytest
 
 import monitor_backend
@@ -32,4 +34,18 @@ def test_defaults_and_permanent_retention(tmp_path, monkeypatch):
         ).retention_days
         is None
     )
-    assert config.default_database_path().name == "system-monitor.db"
+    root = pathlib.Path(config.__file__).resolve().parents[4]
+    assert (
+        config.default_database_path()
+        == root / "data/system-monitor/metrics.db"
+    )
+
+
+def test_default_path_ignores_working_directory(tmp_path, monkeypatch):
+    config = monitor_backend.module("config")
+    root = pathlib.Path(config.__file__).resolve().parents[4]
+    monkeypatch.delenv("A7LAS_METRICS_DB_PATH", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert config.Settings.from_environment().database_path == (
+        root / "data/system-monitor/metrics.db"
+    )

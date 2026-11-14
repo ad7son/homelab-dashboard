@@ -301,7 +301,7 @@ API 只查 SQLite，獨立採集器使用 `python -m src.collector`。
 
 SQL 集中於 `database/repository.py`；連線與建表位於
 `database/connection.py`、`database/schema.sql`。預設資料庫為
-`backend/data/system-monitor.db`，可透過 `A7LAS_METRICS_DB_PATH` 覆寫。
+`data/system-monitor/metrics.db`，可透過 `A7LAS_METRICS_DB_PATH` 覆寫。
 每三秒採集，目前 `None` 永久保留，可改成正整數天數；啟動時不清理，
 運行滿 24 小時後才第一次清理。不遷移舊開發資料，API 格式以新設計為準。
 
