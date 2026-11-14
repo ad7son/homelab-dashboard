@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import type { RealtimeSample } from '../types/realtime';
-import type { Overview } from '../types/system';
+import type { RealtimeSample } from '../utils/realtimeSamples';
+import type { Overview } from '../api/overview';
 import { mergeRealtimeSample } from '../utils/realtimeSamples';
 
 export function useRealtimeSamples() {

@@ -1,4 +1,4 @@
-import type { FeatureHealth, FeatureStatus } from '../../types/health';
+import type { FeatureHealth, FeatureStatus } from '../../api/health';
 
 export const STATUS_LABELS: Record<FeatureStatus, string> = {
   healthy: 'Healthy', issues: 'Issue', unavailable: 'Unavailable', unknown: 'Unknown',

@@ -1,16 +1,16 @@
-import type { GpuInfo } from '../../types/system';
+import type { GpuInfo } from '../../api/overview';
 import { formatPercent } from '../../utils/format';
 
 /** 不支援或讀取失敗時保留卡片並顯示 N/A，只有真實零值才顯示 0%。 */
-export function GpuCard({ gpu }: { gpu?: GpuInfo }) {
+export function GpuCard({ gpu, emptyMessage }: { gpu?: GpuInfo; emptyMessage?: string }) {
   const usage = gpu?.status === 'available' ? gpu.usage_percent : null;
 
   return (
     <article className="metric-card">
       <h2>GPU</h2>
-      <p className="metric-primary">{usage == null ? 'N/A' : formatPercent(usage)}</p>
+      <p className="metric-primary">{!gpu ? '—' : usage == null ? 'N/A' : formatPercent(usage)}</p>
       <p className="metric-secondary-line">
-        {usage == null
+        {!gpu ? emptyMessage ?? 'No GPU data available' : usage == null
           ? gpu?.status === 'unsupported' ? 'GPU monitoring not supported' : 'GPU data unavailable'
           : (gpu!.device_count ?? 0) > 1
             ? `${gpu!.name} · Busiest of ${gpu!.device_count} GPUs`

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import type { HistoricalMetricSample, HistoricalRange } from '../../types/history';
+import type { HistoricalMetricSample, HistoricalRange } from '../../api/history';
 import { SelectedMetricChart } from './SelectedMetricChart';
-import type { MonitoringMetric } from '../../types/monitoring';
+import type { MonitoringMetric } from './metrics';
 import {
   formatHistoryAxisTime,
   formatHistoryTooltipTime,

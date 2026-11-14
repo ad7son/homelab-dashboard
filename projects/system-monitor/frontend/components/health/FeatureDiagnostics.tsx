@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { formatDiagnosticResponse } from './diagnosticData';
-import type { FeatureHealth, ProjectHealthReport } from '../../types/health';
+import type { FeatureHealth, ProjectHealthReport } from '../../api/health';
 
 export interface DiagnosticProps {
   feature: FeatureHealth;

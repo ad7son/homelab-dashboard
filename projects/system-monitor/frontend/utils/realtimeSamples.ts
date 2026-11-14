@@ -1,5 +1,16 @@
-import type { RealtimeSample } from '../types/realtime';
-import type { Overview } from '../types/system';
+export interface RealtimeSample {
+  timestamp: number;
+  cpuUsagePercent: number | null;
+  cpuTemperatureCelsius: number | null;
+  memoryUsagePercent: number | null;
+  networkDownloadBytesPerSecond: number | null;
+  networkUploadBytesPerSecond: number | null;
+  gpuUsagePercent: number | null;
+  diskReadBytesPerSecond: number | null;
+  diskWriteBytesPerSecond: number | null;
+}
+
+import type { Overview } from '../api/overview';
 
 export const REALTIME_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_REALTIME_SAMPLES = 120;

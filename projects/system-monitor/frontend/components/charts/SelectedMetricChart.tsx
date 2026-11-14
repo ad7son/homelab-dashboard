@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react';
 import { formatBytesPerSecond, formatPercent, formatTemperature } from '../../utils/format';
 import { MetricChart } from './MetricChart';
 
-import { MONITORING_METRICS, type MonitoringMetric } from '../../types/monitoring';
+import { MONITORING_METRICS, type MonitoringMetric } from './metrics';
 
 type SelectedMetricChartProps = Omit<ComponentProps<typeof MetricChart>, 'title' | 'series'> & {
   metric: MonitoringMetric;

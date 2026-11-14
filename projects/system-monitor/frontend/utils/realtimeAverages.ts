@@ -1,4 +1,4 @@
-import type { RealtimeSample } from '../types/realtime';
+import type { RealtimeSample } from '../utils/realtimeSamples';
 
 export const RECENT_AVERAGE_WINDOW_MS = 30_000;
 

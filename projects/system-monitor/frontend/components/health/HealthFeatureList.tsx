@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { STATUS_LABELS } from './healthData';
-import type { FeatureHealth, ProjectHealthReport } from '../../types/health';
+import type { FeatureHealth, ProjectHealthReport } from '../../api/health';
 import { FeatureDiagnostics, type DiagnosticProps } from './FeatureDiagnostics';
 
 /** 原生 disclosure 提供鍵盤開關；展開時顯示與狀態相同快照的證據。 */

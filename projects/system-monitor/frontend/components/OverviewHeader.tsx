@@ -1,13 +1,15 @@
 import { Activity, RefreshCw } from 'lucide-react';
-import type { ConnectionStatus } from '../../types/system';
-import { formatClockTime } from '../../utils/format';
+import type { ConnectionStatus } from '../hooks/useOverview';
+import { formatClockTime } from '../utils/format';
 import { PageHeader } from '@shell/components/layout/PageHeader';
-import projectManifest from '../../../project.json';
+import projectManifest from '../../project.json';
 
-interface HomeLabHeaderProps {
+interface OverviewHeaderProps {
   status: ConnectionStatus;
   lastUpdated: Date | null;
   onRefresh: () => void;
+  loading: boolean;
+  error: string | null;
 }
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -17,22 +19,25 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
   offline: 'Offline',
 };
 
-export function HomeLabHeader({
+export function OverviewHeader({
   status,
   lastUpdated,
   onRefresh,
-}: HomeLabHeaderProps) {
+  loading,
+  error,
+}: OverviewHeaderProps) {
   const actions = (
     <div className="homelab-header-meta">
       {/* 連線狀態與更新時間上下排列，刷新按鈕獨立置於右側。 */}
       <div className="homelab-header-status">
         <span className={`homelab-status homelab-status-${status}`}>
           <span className="homelab-status-dot" aria-hidden="true" />
-          {STATUS_LABELS[status]}
+          {loading && !lastUpdated ? 'Loading' : STATUS_LABELS[status]}
         </span>
         <span className="homelab-last-updated">
-          Sampled at {formatClockTime(lastUpdated)}
+          {lastUpdated ? `Sampled at ${formatClockTime(lastUpdated)}` : 'No samples yet'}
         </span>
+        {error ? <span className="homelab-header-error" role="alert">{error}</span> : null}
       </div>
       <button
         type="button"

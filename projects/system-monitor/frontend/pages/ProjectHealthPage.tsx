@@ -5,7 +5,7 @@ import { PageContainer } from '@shell/components/layout/PageContainer';
 import projectManifest from '../../project.json';
 import { HealthSummary } from '../components/health/HealthSummary';
 import { HealthFeatureList } from '../components/health/HealthFeatureList';
-import type { FeatureStatus } from '../types/health';
+import type { FeatureStatus } from '../api/health';
 import { useProjectHealth } from '../hooks/useProjectHealth';
 import { usePageScrollPosition } from '../hooks/usePageScrollPosition';
 

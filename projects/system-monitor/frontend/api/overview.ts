@@ -1,4 +1,67 @@
-import type { Overview } from '../types/system';
+import projectManifest from '../../project.json';
+import { ApiError, requestJson } from './client';
+
+export interface LoadAverage {
+  load_1: number;
+  load_5: number;
+  load_15: number;
+}
+
+export interface CpuInfo {
+  usage_percent: number | null;
+  physical_cores: number | null;
+  logical_cores: number | null;
+  frequency: number | null;
+  temperature: number | null;
+  load_average: LoadAverage | null;
+}
+
+export interface SwapInfo {
+  total: number | null;
+  used: number | null;
+  usage_percent: number | null;
+}
+
+export interface MemoryInfo {
+  total: number | null;
+  used: number | null;
+  available: number | null;
+  usage_percent: number | null;
+  swap: SwapInfo;
+}
+
+export interface NetworkInfo {
+  interface: string | null;
+  ip_address: string | null;
+  download_rate: number | null;
+  upload_rate: number | null;
+}
+
+/** 畫面資料模型；API 的 info/metrics 在請求邊界轉換。 */
+export interface Overview {
+  timestamp_ms: number;
+  info_updated_at_ms: number;
+  cpu: CpuInfo;
+  memory: MemoryInfo;
+  network: NetworkInfo;
+  gpu: GpuInfo;
+  disk_io: DiskIoInfo;
+}
+
+export interface GpuInfo {
+  status: 'available' | 'unavailable' | 'unsupported';
+  usage_percent: number | null;
+  name: string | null;
+  device_count: number | null;
+}
+
+export interface DiskIoInfo {
+  status: 'available' | 'warming_up' | 'unavailable';
+  read_bytes_per_second: number | null;
+  write_bytes_per_second: number | null;
+}
+
+
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -74,8 +137,15 @@ export function parseOverview(value: unknown): Overview {
   };
 }
 
-export const STALE_AFTER_MS = 15_000;
 
-export function sampleStatus(timestamp: number, now = Date.now()): 'online' | 'stale' {
-  return Math.abs(now - timestamp) > STALE_AFTER_MS ? 'stale' : 'online';
+export async function getOverview(signal?: AbortSignal): Promise<Overview> {
+  try {
+    const response = await requestJson(`${projectManifest.apiPrefix}/overview`, { signal, timeoutMs: 5000 });
+    return parseOverview(response);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 503) {
+      throw new ApiError('尚無可用的監測資料，請確認採集器與資料庫是否正常。', 503);
+    }
+    throw error;
+  }
 }

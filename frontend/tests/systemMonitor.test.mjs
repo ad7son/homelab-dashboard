@@ -39,14 +39,21 @@ async function moduleUrl(url) {
   return target;
 }
 async function load(name) { return import(await moduleUrl(new URL(name, root))); }
-const { parseOverview, sampleStatus } = await load('utils/overview.ts');
+const { parseOverview, getOverview } = await load('api/overview.ts');
+const { sampleStatus } = await load('hooks/useOverview.ts');
+const { getHistory, parseHistory } = await load('api/history.ts');
+const { getProjectHealth } = await load('api/health.ts');
+const { requestJson } = await load('api/client.ts');
 const { mergeRealtimeSample } = await load('utils/realtimeSamples.ts');
 const { historicalSamplesToChartPoints } = await load('components/charts/chartUtils.ts');
 const { averageRecentMetric } = await load('utils/realtimeAverages.ts');
 const { formatBytes, formatNullable, formatPercent } = await load('utils/format.ts');
 const { CpuCard } = await load('components/metrics/CpuCard.tsx');
 const { MemoryCard } = await load('components/metrics/MemoryCard.tsx');
-const api = await load('api.ts');
+const { OverviewPage } = await load('pages/OverviewPage.tsx');
+const { OverviewHeader } = await load('components/OverviewHeader.tsx');
+const { GpuCard } = await load('components/metrics/GpuCard.tsx');
+const { DiskIoCard } = await load('components/metrics/DiskIoCard.tsx');
 
 const now = 1794614400000;
 function payload() {
@@ -125,8 +132,8 @@ test('API consumes actual new overview and history contracts', async (context) =
   globalThis.fetch = async (url) => new Response(JSON.stringify(String(url).includes('/history')
     ? {range: '1h', start_ms: now - 3600000, end_ms: now, interval_seconds: 3, samples: []}
     : payload()), {status: 200});
-  assert.equal((await api.getSystemOverview()).timestamp_ms, now);
-  const history = await api.getHistoricalMetrics('1h');
+  assert.equal((await getOverview()).timestamp_ms, now);
+  const history = await getHistory('1h');
   assert.equal(history.start_ms, now - 3600000);
   assert.equal(history.interval_seconds, 3);
 });
@@ -134,9 +141,9 @@ test('503 and malformed history responses surface useful errors', async (context
   const original = globalThis.fetch;
   context.after(() => { globalThis.fetch = original; });
   globalThis.fetch = async () => new Response('{}', {status: 503});
-  await assert.rejects(api.getSystemOverview(), /採集器/);
+  await assert.rejects(getOverview(), /採集器/);
   globalThis.fetch = async () => new Response('{"samples":[]}', {status: 200});
-  await assert.rejects(api.getHistoricalMetrics('1h'), /格式/);
+  await assert.rejects(getHistory('1h'), /格式/);
 });
 
 
@@ -168,4 +175,90 @@ test('diagnostics point at the shared API and show unknown execution time honest
   assert.ok(html.includes('/api/project-health/new-project'));
   assert.ok(html.includes('尚無執行紀錄'));
   assert.ok(!html.includes('/feature-health'));
+});
+
+test('initial overview keeps header, all cards, chart controls and health summary without data', () => {
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(OverviewPage)));
+  for (const label of ['System Monitor', 'Machine State', 'CPU', 'Memory', 'GPU', 'Disk I/O',
+    'Monitoring metric', 'Live', 'History', 'Project Health', 'Summary', 'Loading host data']) {
+    assert.ok(html.includes(label), `missing ${label}`);
+  }
+  assert.ok(!html.includes('connection-banner'));
+  assert.ok(!html.includes('homelab-load-state'));
+  assert.ok(!html.includes('role="progressbar"'));
+});
+
+test('missing host data keeps each card with a placeholder and an appropriate reason', () => {
+  for (const Component of [CpuCard, MemoryCard, GpuCard, DiskIoCard]) {
+    const html = renderToStaticMarkup(createElement(Component, {
+      samples: [], emptyMessage: 'Host data unavailable',
+    }));
+    assert.ok(html.includes('—'));
+    assert.ok(html.includes('Host data unavailable'));
+    assert.ok(!html.includes('0.0%'));
+    assert.ok(!html.includes('role="progressbar"'));
+    assert.ok(!html.includes('monitoring not supported'));
+  }
+});
+
+test('header owns connection errors and still shows the last real sampling time', () => {
+  const html = renderToStaticMarkup(createElement(OverviewHeader, {
+    status: 'stale', lastUpdated: new Date(now), loading: false,
+    error: 'Connection failed', onRefresh() {},
+  }));
+  assert.ok(html.includes('Stale'));
+  assert.ok(html.includes('Sampled at'));
+  assert.ok(html.includes('role="alert"'));
+  assert.ok(html.includes('Connection failed'));
+  assert.ok(html.includes('Refresh System Monitor'));
+});
+
+test('HTTP client distinguishes a timeout from caller cancellation and avoids an already cancelled fetch', async (context) => {
+  const original = globalThis.fetch;
+  context.after(() => { globalThis.fetch = original; });
+  let calls = 0;
+  globalThis.fetch = (_url, { signal }) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    });
+  };
+  await assert.rejects(requestJson('/timeout', { timeoutMs: 5 }), /timed out/);
+  const controller = new AbortController();
+  const pending = requestJson('/cancel', { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  assert.equal(calls, 2);
+  await assert.rejects(requestJson('/already-cancelled', { signal: controller.signal }), { name: 'AbortError' });
+  assert.equal(calls, 2);
+});
+
+test('history validation rejects malformed individual samples before they reach the chart', () => {
+  const body = { range: '1h', start_ms: now - 3600000, end_ms: now, interval_seconds: 3,
+    samples: [{ timestamp_ms: now }] };
+  for (const samples of [[null], [{timestamp_ms: 'wrong'}], body.samples]) {
+    assert.throws(() => parseHistory({...body, samples}), /格式/);
+  }
+  const valid = {timestamp_ms: now, cpu_usage_percent: 0, cpu_temperature_celsius: null,
+    memory_usage_percent: null, network_download_bytes_per_second: 0,
+    network_upload_bytes_per_second: null, gpu_usage_percent: null,
+    disk_read_bytes_per_second: null, disk_write_bytes_per_second: null};
+  assert.equal(parseHistory({...body, samples: [valid]}).samples[0].cpu_usage_percent, 0);
+});
+
+test('health API handles list and detail, rejects malformed diagnostics and mismatched project IDs', async (context) => {
+  const original = globalThis.fetch;
+  context.after(() => { globalThis.fetch = original; });
+  const report = {project_id: 'new-project', project_name: 'New Project', checked_at_ms: now, features: [feature]};
+  globalThis.fetch = async () => new Response(JSON.stringify({projects: [report]}));
+  assert.equal((await getProjectHealth())[0].features[0].duration_ms, null);
+  globalThis.fetch = async () => new Response(JSON.stringify(report));
+  assert.equal((await getProjectHealth('new-project'))[0].project_id, 'new-project');
+  await assert.rejects(getProjectHealth('other-project'), /格式/);
+  for (const broken of [null, {...feature, error: undefined}, {...feature, message: 123}]) {
+    globalThis.fetch = async () => new Response(JSON.stringify({...report, features: [broken]}));
+    await assert.rejects(getProjectHealth('new-project'), /格式/);
+  }
+  globalThis.fetch = async () => new Response('{}', {status: 404});
+  await assert.rejects(getProjectHealth('missing'), /找不到/);
 });

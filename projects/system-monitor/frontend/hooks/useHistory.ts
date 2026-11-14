@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, getHistoricalMetrics } from '../api';
+import { getHistory } from '../api/history';
 import type {
   HistoricalMetricsResponse,
   HistoricalRange,
-} from '../types/history';
+} from '../api/history';
 
 const DEFAULT_RANGE: HistoricalRange = '1h';
 const HISTORY_REFRESH_INTERVAL_MS = 30_000;
 
-interface UseHistoricalMetricsOptions {
+interface UseHistoryOptions {
   enabled: boolean;
   refreshToken: number;
 }
 
-interface UseHistoricalMetricsResult {
+export interface UseHistoryResult {
   range: HistoricalRange;
   setRange: (range: HistoricalRange) => void;
   data: HistoricalMetricsResponse | null;
@@ -26,10 +26,10 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-export function useHistoricalMetrics({
+export function useHistory({
   enabled,
   refreshToken,
-}: UseHistoricalMetricsOptions): UseHistoricalMetricsResult {
+}: UseHistoryOptions): UseHistoryResult {
   const [range, setRangeState] = useState<HistoricalRange>(DEFAULT_RANGE);
   const [data, setData] = useState<HistoricalMetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,7 +74,7 @@ export function useHistoricalMetrics({
       setError(null);
 
       try {
-        const response = await getHistoricalMetrics(range, controller.signal);
+        const response = await getHistory(range, controller.signal);
         if (
           requestId !== requestIdRef.current ||
           controller.signal.aborted
@@ -92,9 +92,7 @@ export function useHistoricalMetrics({
           return;
         }
         setError(
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
+          err instanceof Error
               ? err.message
               : 'Failed to load historical metrics',
         );

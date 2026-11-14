@@ -1,5 +1,5 @@
-import type { HistoricalMetricSample, HistoricalRange } from '../../types/history';
-import type { RealtimeSample } from '../../types/realtime';
+import type { HistoricalMetricSample, HistoricalRange } from '../../api/history';
+import type { RealtimeSample } from '../../utils/realtimeSamples';
 
 /** Gap larger than ~2 polling intervals inserts a chart-only break. */
 export const REALTIME_CHART_GAP_THRESHOLD_MS = 7000;

@@ -13,8 +13,8 @@ export function ProjectHealthSection({ health }: { health: ReturnType<typeof use
     <section className="project-health" aria-labelledby="project-health-heading">
       <SectionHeader id="project-health-heading" title="Project Health" />
       {health.error ? <p role="alert" className="health-diagnostic-error">{health.error}{health.projects.length ? '；目前顯示上次成功取得的報告。' : ''}</p> : null}
+      <HealthSummary features={health.projects.length ? features : undefined} />
       {!health.projects.length ? <p role="status">{health.loading ? '正在讀取專案健康報告…' : '尚無可顯示的專案報告。'}</p> : <>
-        <HealthSummary features={features} />
         <div className="health-project-grid">
           {health.projects.map((project) => {
             const counts = summarizeFeatures(project.features);

@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import type { RealtimeSample } from '../../types/realtime';
-import { HISTORICAL_RANGES, type HistoricalRange } from '../../types/history';
-import { useHistoricalMetrics } from '../../hooks/useHistoricalMetrics';
+import type { RealtimeSample } from '../../utils/realtimeSamples';
+import { HISTORICAL_RANGES, type HistoricalRange } from '../../api/history';
+import type { UseHistoryResult } from '../../hooks/useHistory';
 import { HistoricalMonitoringCharts } from './HistoricalMonitoringCharts';
 import { LiveMonitoringCharts } from './LiveMonitoringCharts';
-import { MONITORING_METRICS, type MonitoringMetric } from '../../types/monitoring';
+import { MONITORING_METRICS, type MonitoringMetric } from './metrics';
 
 type MonitoringMode = 'live' | 'history';
 
 interface MonitoringSectionProps {
-  refreshToken: number;
+  history: UseHistoryResult;
+  emptyMessage: string;
   samples: RealtimeSample[];
   mode: MonitoringMode;
   onModeChange: (mode: MonitoringMode) => void;
@@ -17,17 +18,14 @@ interface MonitoringSectionProps {
 
 export function MonitoringSection({
   samples,
-  refreshToken,
+  history,
+  emptyMessage,
   mode,
   onModeChange,
 }: MonitoringSectionProps) {
   // 指標選擇獨立於即時／歷史模式，切換模式或範圍時保留同一個指標。
   const [metric, setMetric] = useState<MonitoringMetric>('cpu');
-  const historyEnabled = mode === 'history';
-  const { range, setRange, data, loading, error, retry } = useHistoricalMetrics({
-    enabled: historyEnabled,
-    refreshToken,
-  });
+  const { range, setRange, data, loading, error, retry } = history;
 
   const isLive = mode === 'live';
 
@@ -100,7 +98,7 @@ export function MonitoringSection({
 
       {!isLive && error && data ? <p className="monitoring-panel-detail" role="alert">{error}；目前顯示上次取得的歷史資料。</p> : null}
       {isLive ? (
-        <LiveMonitoringCharts samples={samples} metric={metric} />
+        <LiveMonitoringCharts samples={samples} metric={metric} emptyMessage={emptyMessage} />
       ) : loading && !data ? (
         <div className="monitoring-panel-state" role="status">
           Loading historical data…

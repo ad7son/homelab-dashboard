@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSystemOverview } from '../api';
-import type { ConnectionStatus, Overview } from '../types/system';
-import { sampleStatus } from '../utils/overview';
+import { getOverview, type Overview } from '../api/overview';
 import { useRealtimeSamples } from './useRealtimeSamples';
+
+export type ConnectionStatus = 'online' | 'stale' | 'unstable' | 'offline';
 
 const POLL_INTERVAL_MS = 3000;
 
-export function useSystemOverview() {
+export function useOverview() {
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +20,9 @@ export function useSystemOverview() {
     if (!mounted.current || request.current) return;
     const controller = new AbortController();
     request.current = controller;
+    setLoading(true);
     try {
-      const overview = await getSystemOverview(controller.signal);
+      const overview = await getOverview(controller.signal);
       if (controller.signal.aborted || !mounted.current) return;
       setData(overview);
       setError(null);
@@ -67,4 +68,10 @@ export function useSystemOverview() {
     lastUpdated: data ? new Date(data.timestamp_ms) : null,
     refresh: fetchOverview,
   };
+}
+
+export const STALE_AFTER_MS = 15_000;
+
+export function sampleStatus(timestamp: number, now = Date.now()): 'online' | 'stale' {
+  return Math.abs(now - timestamp) > STALE_AFTER_MS ? 'stale' : 'online';
 }

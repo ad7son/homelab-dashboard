@@ -2,9 +2,9 @@ import { lazy } from 'react'
 import type { ProjectFrontendModule } from '@shell/modules/types'
 import './styles.css'
 
-const HomeLabDashboard = lazy(() =>
-  import('./pages/HomeLabDashboard').then((module) => ({
-    default: module.HomeLabDashboard,
+const OverviewPage = lazy(() =>
+  import('./pages/OverviewPage').then((module) => ({
+    default: module.OverviewPage,
   })),
 )
 
@@ -14,7 +14,7 @@ const ProjectHealthPage = lazy(() =>
 
 const systemMonitorModule: ProjectFrontendModule = {
   routes: [
-    { index: true, element: <HomeLabDashboard /> },
+    { index: true, element: <OverviewPage /> },
     { path: 'health/:projectId', element: <ProjectHealthPage /> },
   ],
 }
