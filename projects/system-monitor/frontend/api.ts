@@ -1,3 +1,4 @@
+import { parseOverview } from './utils/overview';
 import type { Overview } from './types/system';
 import type {
   HistoricalMetricsResponse,
@@ -29,9 +30,12 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-export async function getSystemOverview(): Promise<Overview> {
+export async function getSystemOverview(externalSignal?: AbortSignal): Promise<Overview> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const abort = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  externalSignal?.addEventListener('abort', abort);
+  const timeoutId = setTimeout(abort, REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${API_PREFIX}/overview`, {
@@ -39,10 +43,12 @@ export async function getSystemOverview(): Promise<Overview> {
     });
 
     if (!response.ok) {
-      throw new ApiError(`Request failed with status ${response.status}`);
+      throw new ApiError(response.status === 503
+        ? '尚無可用的監測資料，請確認採集器與資料庫是否正常。'
+        : `Request failed with status ${response.status}`);
     }
 
-    return (await response.json()) as Overview;
+    return parseOverview(await response.json());
   } catch (error) {
     if (isAbortError(error)) {
       throw new ApiError('Request timed out after 5 seconds');
@@ -55,6 +61,7 @@ export async function getSystemOverview(): Promise<Overview> {
     );
   } finally {
     clearTimeout(timeoutId);
+    externalSignal?.removeEventListener('abort', abort);
   }
 }
 
@@ -87,10 +94,18 @@ export async function getHistoricalMetrics(
     );
 
     if (!response.ok) {
-      throw new ApiError(`Request failed with status ${response.status}`);
+      throw new ApiError(response.status === 503
+        ? '尚無可用的監測資料，請確認採集器與資料庫是否正常。'
+        : `Request failed with status ${response.status}`);
     }
 
-    return (await response.json()) as HistoricalMetricsResponse;
+    const data = await response.json() as HistoricalMetricsResponse;
+    if (!Array.isArray(data.samples) || !Number.isFinite(data.start_ms) ||
+        !Number.isFinite(data.end_ms) || !Number.isFinite(data.interval_seconds) ||
+        data.interval_seconds <= 0) {
+      throw new ApiError('歷史資料回應格式不正確');
+    }
+    return data;
   } catch (error) {
     if (isAbortError(error)) {
       if (externalSignal?.aborted) {

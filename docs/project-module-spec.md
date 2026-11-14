@@ -121,9 +121,20 @@ def build_router() -> APIRouter:
     return router
 ```
 
-`build_router()` must return a new FastAPI `APIRouter` on every call. Route paths inside that router are relative (`/overview`, `/feature-health`). The loader mounts one router at `apiPrefix`. When `legacyApiPrefix` is set, it calls `build_router()` again and mounts that second router at the legacy prefix. The plugin does not hardcode `/api` or `/api/system-monitor`.
+`build_router()` must return a new FastAPI `APIRouter` on every call. Route paths inside that router are relative (`/overview`, `/history`). The loader mounts one router at `apiPrefix`. When `legacyApiPrefix` is set, it calls `build_router()` again and mounts that second router at the legacy prefix. The plugin does not hardcode `/api` or `/api/system-monitor`.
 
 The loader imports `{pythonPackage}.plugin` inside an isolated namespace derived from the project id and resolved path. It does not add project backends to `sys.path`; project-local imports should be relative. Multiple projects can use `src` or `app` without colliding with one another or the platform `app`. A failed batch removes only newly imported modules in the affected project namespaces.
+
+### Optional Project Lifespan
+
+Plugin 可額外提供 `lifespan(app)`，回傳非同步情境管理器。平台在 FastAPI
+啟動時依專案排序進入，關閉時反向退出；後續專案啟動失敗也會退出先前
+已啟動的專案。背景工作只能在 lifespan 內啟動，不可在匯入或 build_router
+時啟動。未提供此介面的專案只掛載路由，無須修改。
+
+同一專案的正式與相容 API 前綴只共用一次 plugin 生命週期，不會啟動兩次。
+生命週期在每個 API worker 各自執行；需要單例背景工作的專案，必須自行
+處理跨 worker 互斥與資源回收。平台不硬編碼個別專案的啟動指令。
 
 Plugin route paths must stay under `apiPrefix`. A path such as `/../health` is rejected. Only HTTP routes are accepted.
 
@@ -139,7 +150,7 @@ Project routes are mounted only at that project's `apiPrefix`:
 |---|---|---|
 | `apiPrefix` | `/api/system-monitor` | prefix owned by the loader |
 | router path | `/overview` | `GET /api/system-monitor/overview` |
-| router path | `/feature-health` | `GET /api/system-monitor/feature-health` |
+| router path | `/history` | `GET /api/system-monitor/history` |
 
 A project cannot choose an `apiPrefix` of `/api` or `/api/health`. `legacyApiPrefix: "/api"` is the one exception, and only `system-monitor` may set it. The loader computes every `HTTP method + full path` for both mounts and rejects duplicates, including duplicates against routes already on the FastAPI app such as `GET /api/health`. It also rejects two different prefixes that expand to the same path, such as `/api/team` + `/alpha/ping` and `/api/team/alpha` + `/ping`.
 
@@ -284,13 +295,19 @@ Enabled projects cannot share `id`, `routeBase`, `apiPrefix`, or a final `HTTP m
 
 `GET /api/health` stays on the platform. Settings remains a shell page at `/settings`.
 
-System Monitor 原始碼位於 `projects/system-monitor/backend/src/`，採用 `api/`、`services/`、`domain/`、`infrastructure/`、`collector/`、`core/` 分層，`bootstrap.py` 統一組裝服務。`plugin.py` 僅提供平台掛載入口；已移除專案自己的 `main.py`，API 統一由平台啟動。`project.json` 仍設定 `pythonPackage: "src"`，採集器入口仍為 `python -m src.collector.metrics_collector`。
+System Monitor 原始碼位於 `projects/system-monitor/backend/src/`，採用
+`api/`、`collector/`、`database/` 三部分。`plugin.py` 僅提供平台掛載入口。
+API 只查 SQLite，獨立採集器使用 `python -m src.collector`。
 
-SQL 查詢集中於 `infrastructure/repositories/metrics_repository.py`；連線與版本遷移分別位於 `infrastructure/database/connection.py`、`migration_runner.py` 與 `migrations/*.sql`。診斷 JSON 旁檔由 `infrastructure/storage/collector_status.py` 管理。應用服務透過介面使用這些實作，公開 API 路徑、欄位與狀態碼維持原契約。完整說明見 [System Monitor 後端架構](system-monitor-backend.md)。
+SQL 集中於 `database/repository.py`；連線與建表位於
+`database/connection.py`、`database/schema.sql`。預設資料庫為
+`backend/data/system-monitor.db`，可透過 `A7LAS_METRICS_DB_PATH` 覆寫。
+每三秒採集，目前 `None` 永久保留，可改成正整數天數；啟動時不清理，
+運行滿 24 小時後才第一次清理。不遷移舊開發資料，API 格式以新設計為準。
 
-The default SQLite file remains `<repository>/backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` still overrides it. Schema v2 adds nullable GPU usage and disk read/write rate columns and migrates v1 databases transactionally without deleting existing samples. Older samples retain null for the new metrics. The 7-day raw retention window and 30-second collector interval are unchanged. Restart the API and collector together after upgrading.
+採集器使用 OS 程序鎖；POSIX 使用 flock，Windows 使用 byte-range lock。
+Linux unit 已改為 `python -m src.collector`，修改檔案不代表已部署到伺服器。
 
-Linux `fcntl.flock` is imported only when the collector takes its process lock. The lock test is skipped on Windows. The collector implementation was not replaced with a Windows lock.
-
-`deploy/systemd/a7las-metrics-collector.service` in this repository now uses working directory `/srv/homelab-dashboard/projects/system-monitor/backend` and starts `/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector.metrics_collector`. Those paths follow the unit file that was already in the repository. Editing the unit file does not reload a live server. A Linux administrator still has to copy the unit and run `systemctl daemon-reload` before restarting the service.
-
+目前專案健康度的前端設計與路由保留，後端檢測 API 已移除，待共用 log
+系統完成後重新串接。前端與新 API 的差異已列於
+[System Monitor 後端](../projects/system-monitor/backend/README.md)。

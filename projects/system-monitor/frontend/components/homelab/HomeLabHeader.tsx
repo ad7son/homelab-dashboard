@@ -12,6 +12,7 @@ interface HomeLabHeaderProps {
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   online: 'Online',
+  stale: 'Stale',
   unstable: 'Unstable',
   offline: 'Offline',
 };
@@ -30,7 +31,7 @@ export function HomeLabHeader({
           {STATUS_LABELS[status]}
         </span>
         <span className="homelab-last-updated">
-          Last updated {formatClockTime(lastUpdated)}
+          Sampled at {formatClockTime(lastUpdated)}
         </span>
       </div>
       <button

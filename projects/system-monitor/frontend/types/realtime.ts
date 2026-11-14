@@ -1,8 +1,8 @@
 export interface RealtimeSample {
   timestamp: number;
-  cpuUsagePercent: number;
+  cpuUsagePercent: number | null;
   cpuTemperatureCelsius: number | null;
-  memoryUsagePercent: number;
+  memoryUsagePercent: number | null;
   networkDownloadBytesPerSecond: number | null;
   networkUploadBytesPerSecond: number | null;
   gpuUsagePercent: number | null;

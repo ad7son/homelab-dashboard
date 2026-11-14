@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import projectManifest from '../../project.json';
 import type { ProjectHealthReport } from '../types/health';
 
+// 健康檢測等待共用 log 系統，保留 UI 與串接程式但不呼叫已移除的 API。
+const PROJECT_HEALTH_AVAILABLE = false;
+
 /**
  * 首次載入後每 30 秒更新整份報告，手動刷新強制重新檢查。
  * 失敗保留上次報告並明確提示，取消請求後不更新狀態。
@@ -10,10 +13,10 @@ import type { ProjectHealthReport } from '../types/health';
 export function useProjectHealth(refreshToken = 0, enabled = true, poll = true) {
   const [data, setData] = useState<ProjectHealthReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(PROJECT_HEALTH_AVAILABLE && enabled);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !PROJECT_HEALTH_AVAILABLE) return;
     let active = true;
     let pending = false;
     let controller: AbortController | null = null;
@@ -45,5 +48,5 @@ export function useProjectHealth(refreshToken = 0, enabled = true, poll = true) 
     const interval = poll ? window.setInterval(() => { void load(false); }, 30_000) : null;
     return () => { active = false; controller?.abort(); if (interval !== null) window.clearInterval(interval); };
   }, [refreshToken, attempt, enabled, poll]);
-  return { data, error, loading, refresh: () => setAttempt((value) => value + 1) };
+  return { available: PROJECT_HEALTH_AVAILABLE, data, error, loading, refresh: () => setAttempt((value) => value + 1) };
 }

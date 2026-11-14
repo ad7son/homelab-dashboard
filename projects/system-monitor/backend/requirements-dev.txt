@@ -1,2 +1,4 @@
-# 開發排版工具；執行時依賴維持在 requirements.txt。
+pytest
+httpx
 black==26.5.1
+pylint==4.1.3

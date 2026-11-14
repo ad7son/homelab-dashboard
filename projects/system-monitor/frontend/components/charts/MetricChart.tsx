@@ -108,7 +108,12 @@ export function MetricChart({
 }: MetricChartProps) {
   let body: ReactNode;
 
-  if (unavailable) {
+  const hasValues = data.some((point) => series.some((item) => {
+    const value = point[item.dataKey];
+    return typeof value === 'number' && Number.isFinite(value);
+  }));
+
+  if (unavailable || (data.length > 0 && !hasValues)) {
     body = <div className="metric-chart-empty">{unavailableMessage}</div>;
   } else if (data.length === 0) {
     body = <div className="metric-chart-empty">{emptyMessage}</div>;

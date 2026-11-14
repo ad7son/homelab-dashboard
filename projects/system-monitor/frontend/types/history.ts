@@ -4,9 +4,9 @@ export const HISTORICAL_RANGES: HistoricalRange[] = ['15m', '1h', '24h', '7d'];
 
 export interface HistoricalMetricSample {
   timestamp_ms: number;
-  cpu_usage_percent: number;
+  cpu_usage_percent: number | null;
   cpu_temperature_celsius: number | null;
-  memory_usage_percent: number;
+  memory_usage_percent: number | null;
   network_download_bytes_per_second: number | null;
   network_upload_bytes_per_second: number | null;
   gpu_usage_percent: number | null;
@@ -15,8 +15,9 @@ export interface HistoricalMetricSample {
 }
 
 export interface HistoricalMetricsResponse {
-  range: HistoricalRange;
-  start_timestamp_ms: number;
-  end_timestamp_ms: number;
+  range: HistoricalRange | null;
+  start_ms: number;
+  end_ms: number;
+  interval_seconds: number;
   samples: HistoricalMetricSample[];
 }

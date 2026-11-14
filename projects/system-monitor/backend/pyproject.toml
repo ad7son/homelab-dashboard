@@ -1,5 +1,13 @@
-# Black 官方格式；行長依 Google Python Style Guide §3.2 設為 80 字元。
 [tool.black]
 line-length = 80
-target-version = ["py310"]
-required-version = "26.5.1"
+target-version = ["py312"]
+
+[tool.pylint.main]
+py-version = "3.12"
+
+[tool.pylint.format]
+max-line-length = 80
+
+[tool.pylint.messages_control]
+# 相對匯入配合平台隔離命名空間；SQL 資料欄位與 API 模型天然較多。
+disable = ["too-few-public-methods", "too-many-instance-attributes"]

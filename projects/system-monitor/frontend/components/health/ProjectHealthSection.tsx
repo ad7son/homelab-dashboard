@@ -16,6 +16,12 @@ export function ProjectHealthSection({ health }: { health: ReturnType<typeof use
         id="project-health-heading"
         title="Project Health"
       />
+      {!health.available ? (
+        <div className="health-project">
+          <p className="health-feature-detail">專案健康監測尚未啟用，將於共用 log 系統完成後提供。</p>
+          <Link className="health-back-link" to={`${projectManifest.routeBase}/health/${projectManifest.id}`}>查看專案健康詳情 <ChevronRight size={14} aria-hidden="true" /></Link>
+        </div>
+      ) : <>
       {health.error ? <p role="alert" className="health-diagnostic-error">{health.error}{health.data ? '；目前顯示上次成功取得的報告。' : ''}</p> : null}
       {!health.data ? <p role="status">{health.loading ? '正在檢查專案功能…' : '尚無可顯示的健康報告。'}</p> : <>
       <HealthSummary features={features} />
@@ -41,6 +47,7 @@ export function ProjectHealthSection({ health }: { health: ReturnType<typeof use
           </dl>
         </Link>
       </div>
+      </>}
       </>}
     </section>
   );

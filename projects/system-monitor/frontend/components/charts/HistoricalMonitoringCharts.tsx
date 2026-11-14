@@ -11,14 +11,15 @@ import {
 
 interface HistoricalMonitoringChartsProps {
   range: HistoricalRange;
+  intervalSeconds: number;
   samples: HistoricalMetricSample[];
   metric: MonitoringMetric;
 }
 
-export function HistoricalMonitoringCharts({ range, samples, metric }: HistoricalMonitoringChartsProps) {
+export function HistoricalMonitoringCharts({ range, samples, metric, intervalSeconds }: HistoricalMonitoringChartsProps) {
   const chartPoints = useMemo(
-    () => historicalSamplesToChartPoints(samples, range),
-    [samples, range],
+    () => historicalSamplesToChartPoints(samples, range, intervalSeconds),
+    [samples, range, intervalSeconds],
   );
   const temperatureAvailable = hasValidHistoricalTemperature(samples);
 

@@ -2,7 +2,7 @@ import type { ConnectionStatus } from '../../types/system';
 import { formatClockTime } from '../../utils/format';
 
 interface ConnectionBannerProps {
-  status: Extract<ConnectionStatus, 'unstable' | 'offline'>;
+  status: Extract<ConnectionStatus, 'stale' | 'unstable' | 'offline'>;
   lastUpdated: Date | null;
 }
 
@@ -11,6 +11,16 @@ export function ConnectionBanner({
   lastUpdated,
 }: ConnectionBannerProps) {
   const lastSuccessful = formatClockTime(lastUpdated);
+
+  if (status === 'stale') {
+    return (
+      <div className="connection-banner connection-banner-unstable" role="status">
+        <p className="connection-banner-title">Monitoring data is stale</p>
+        <p className="connection-banner-body">The latest sample is not current. The collector may have stopped or its clock may be incorrect.</p>
+        <p className="connection-banner-meta">Last sampled at {lastSuccessful}</p>
+      </div>
+    );
+  }
 
   if (status === 'unstable') {
     return (
@@ -24,7 +34,7 @@ export function ConnectionBanner({
         </p>
         {lastUpdated ? (
           <p className="connection-banner-meta">
-            Last successful update {lastSuccessful}
+            Last sampled at {lastSuccessful}
           </p>
         ) : null}
       </div>
@@ -39,7 +49,7 @@ export function ConnectionBanner({
       <p className="connection-banner-title">Home Lab offline</p>
       <p className="connection-banner-body">
         Unable to reach the monitoring backend. Showing data from the last
-        successful update {lastSuccessful}.
+        sample at {lastSuccessful}.
       </p>
     </div>
   );

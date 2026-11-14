@@ -6,13 +6,13 @@ export function averageRecentMetric(
   samples: RealtimeSample[],
   key: keyof RealtimeSample,
   windowMs: number = RECENT_AVERAGE_WINDOW_MS,
+  now = Date.now(),
 ): number | null {
   if (samples.length === 0) {
     return null;
   }
 
-  const newestTimestamp = samples[samples.length - 1].timestamp;
-  const cutoff = newestTimestamp - windowMs;
+  const cutoff = now - windowMs;
 
   let sum = 0;
   let count = 0;
@@ -23,7 +23,7 @@ export function averageRecentMetric(
     }
 
     const value = sample[key];
-    if (typeof value === 'number' && !Number.isNaN(value)) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
       sum += value;
       count += 1;
     }

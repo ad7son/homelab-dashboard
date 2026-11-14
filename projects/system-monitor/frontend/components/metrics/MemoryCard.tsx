@@ -1,6 +1,6 @@
 import type { RealtimeSample } from '../../types/realtime';
 import type { MemoryInfo } from '../../types/system';
-import { formatBytes, formatPercent } from '../../utils/format';
+import { formatBytes, formatNullable, formatPercent } from '../../utils/format';
 import { averageRecentMetric } from '../../utils/realtimeAverages';
 
 interface MemoryCardProps {
@@ -16,11 +16,11 @@ export function MemoryCard({ memory, samples }: MemoryCardProps) {
   return (
     <article className="metric-card">
       <h2>Memory</h2>
-      <p className="metric-primary">{formatPercent(memory.usage_percent)}</p>
+      <p className="metric-primary">{formatNullable(memory.usage_percent, formatPercent)}</p>
       <p className="metric-secondary-line">
-        {averageLabel} · {formatBytes(memory.used)} / {formatBytes(memory.total)}
+        {averageLabel} · {formatNullable(memory.used, formatBytes)} / {formatNullable(memory.total, formatBytes)}
       </p>
-      <div
+      {memory.usage_percent !== null ? <div
         className="usage-bar"
         role="progressbar"
         aria-valuenow={memory.usage_percent}
@@ -31,7 +31,7 @@ export function MemoryCard({ memory, samples }: MemoryCardProps) {
           className="usage-bar-fill usage-bar-memory"
           style={{ width: `${memory.usage_percent}%` }}
         />
-      </div>
+      </div> : null}
     </article>
   );
 }

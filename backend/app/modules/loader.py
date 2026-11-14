@@ -19,6 +19,7 @@ from typing import Iterator
 from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 
+from app.modules import lifecycle
 from app.modules.manifest import ProjectManifest, ProjectModuleError, load_project_manifest
 
 # backend/app/modules/loader.py -> parents[3] is the repository root.
@@ -114,11 +115,21 @@ def register_project_routers(
     manifests = discover_project_manifests(projects_root)
     session = _ImportSession(namespaces=[], modules_before=set(sys.modules))
     loaded: list[LoadedProjectRouter] = []
+    lifespans: list[tuple[str, lifecycle.Lifespan]] = []
     try:
         for manifest in manifests:
             project_dir = projects_root / manifest.id
             _require_plugin_file(project_dir, manifest)
             router = _import_build_router(session, project_dir, manifest)
+            package = project_package_name(project_dir, manifest.python_package)
+            module_name = f"{package}.plugin"
+            factory = getattr(sys.modules[module_name], "lifespan", None)
+            if factory is not None:
+                if not callable(factory):
+                    raise ProjectModuleError(
+                        f"project '{manifest.id}': lifespan must be callable"
+                    )
+                lifespans.append((manifest.id, factory))
             loaded.append(
                 LoadedProjectRouter(
                     manifest=manifest,
@@ -151,6 +162,8 @@ def register_project_routers(
         raise ProjectModuleError(
             f"failed while mounting project routers: {exc}"
         ) from exc
+    previous = getattr(app.state, "project_lifespans", ())
+    app.state.project_lifespans = (*previous, *lifespans)
     return manifests
 
 

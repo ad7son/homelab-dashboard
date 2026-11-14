@@ -5,7 +5,7 @@ import type { RealtimeSample } from '../../types/realtime';
 export const REALTIME_CHART_GAP_THRESHOLD_MS = 7000;
 
 /** Gap larger than ~2 raw collector intervals (15m / 1h history). */
-export const HISTORY_CHART_GAP_THRESHOLD_MS = 65_000;
+export const HISTORY_CHART_GAP_THRESHOLD_MS = 7000;
 
 /** Gap larger than ~2 five-minute aggregation buckets (24h history). */
 export const HISTORY_CHART_GAP_THRESHOLD_24H_MS = 11 * 60 * 1000;
@@ -93,6 +93,7 @@ export function toChartPoints(samples: RealtimeSample[]): ChartPoint[] {
 export function historicalSamplesToChartPoints(
   samples: HistoricalMetricSample[],
   range: HistoricalRange,
+  intervalSeconds?: number,
 ): ChartPoint[] {
   const points = samples.map((sample) => ({
     timestamp: sample.timestamp_ms,
@@ -106,7 +107,10 @@ export function historicalSamplesToChartPoints(
     diskWriteBytesPerSecond: sample.disk_write_bytes_per_second ?? null,
   }));
 
-  return insertChartGaps(points, historyChartGapThresholdMs(range));
+  const threshold = intervalSeconds && intervalSeconds > 0
+    ? intervalSeconds * 2000 + 1000
+    : historyChartGapThresholdMs(range);
+  return insertChartGaps(points, threshold);
 }
 
 export function formatChartAxisTime(timestamp: number): string {
@@ -157,7 +161,7 @@ export function hasValidSeriesValues(
 ): boolean {
   return samples.some((sample) => {
     const value = sample[key as keyof typeof sample];
-    return typeof value === 'number' && !Number.isNaN(value);
+    return typeof value === 'number' && Number.isFinite(value);
   });
 }
 
@@ -167,6 +171,6 @@ export function hasValidHistoricalTemperature(
   return samples.some(
     (sample) =>
       typeof sample.cpu_temperature_celsius === 'number' &&
-      !Number.isNaN(sample.cpu_temperature_celsius),
+      Number.isFinite(sample.cpu_temperature_celsius),
   );
 }

@@ -64,7 +64,7 @@ export function HomeLabDashboard() {
         onRefresh={refreshPage}
       />
 
-      {status === 'unstable' || status === 'offline' ? (
+      {status === 'stale' || status === 'unstable' || status === 'offline' ? (
         <ConnectionBanner status={status} lastUpdated={lastUpdated} />
       ) : null}
 

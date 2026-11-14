@@ -1,31 +1,37 @@
-"""即時總覽 HTTP 入口；不執行硬體與儲存操作。"""
+"""即時 API 只查詢資料庫最新資料，不匯入或啟動硬體讀取器。"""
 
 from __future__ import annotations
 
+import logging
+import sqlite3
+
 import fastapi
 
-from .. import dependencies
-from ...domain import serialization
-from ...services import overview as services_overview
-from ..schemas import overview
+from ... import config
+from ...database import repository
+from .. import schemas
 
 router = fastapi.APIRouter()
+_logger = logging.getLogger(__name__)
 
 
-@router.get("/overview", response_model=overview.Overview)
-def read_overview(
-    service: services_overview.OverviewService = fastapi.Depends(
-        dependencies.get_overview_service
-    ),
-) -> overview.Overview:
-    """取得並驗證五項主機快照。
-
-    Args:
-        service: 由平台設定取得的總覽服務。
-
-    Returns:
-        公開總覽模型；選用資料未提供時保留 None，不補成零。
-    """
-    return overview.Overview.model_validate(
-        serialization.to_dict(service.get_overview())
+@router.get("/overview", response_model=schemas.Overview)
+def read_overview() -> schemas.Overview:
+    """回傳基本資訊及最新指標；缺少資料或資料庫不可讀時回傳 503。"""
+    settings = config.Settings.from_environment()
+    store = repository.HostRepository(
+        settings.database_path, settings.sqlite_timeout_seconds
+    )
+    try:
+        latest = store.get_latest()
+    except sqlite3.Error as exc:
+        _logger.exception("Overview database unavailable")
+        raise fastapi.HTTPException(
+            503, "Metrics database unavailable"
+        ) from exc
+    if latest is None:
+        raise fastapi.HTTPException(503, "No host metrics collected yet")
+    return schemas.Overview(
+        info=schemas.HostInfo.model_validate(latest),
+        metrics=schemas.HostMetrics.model_validate(latest),
     )

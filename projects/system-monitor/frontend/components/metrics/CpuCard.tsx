@@ -21,11 +21,11 @@ export function CpuCard({ cpu, samples }: CpuCardProps) {
   return (
     <article className="metric-card">
       <h2>CPU</h2>
-      <p className="metric-primary">{formatPercent(cpu.usage_percent)}</p>
+      <p className="metric-primary">{formatNullable(cpu.usage_percent, formatPercent)}</p>
       <p className="metric-secondary-line">
         {temperature} · {averageLabel}
       </p>
-      <div
+      {cpu.usage_percent !== null ? <div
         className="usage-bar"
         role="progressbar"
         aria-valuenow={cpu.usage_percent}
@@ -36,7 +36,7 @@ export function CpuCard({ cpu, samples }: CpuCardProps) {
           className="usage-bar-fill usage-bar-cpu"
           style={{ width: `${cpu.usage_percent}%` }}
         />
-      </div>
+      </div> : null}
     </article>
   );
 }

@@ -11,8 +11,8 @@ export function GpuCard({ gpu }: { gpu?: GpuInfo }) {
       <p className="metric-primary">{usage == null ? 'N/A' : formatPercent(usage)}</p>
       <p className="metric-secondary-line">
         {usage == null
-          ? 'GPU data unavailable'
-          : gpu!.device_count > 1
+          ? gpu?.status === 'unsupported' ? 'GPU monitoring not supported' : 'GPU data unavailable'
+          : (gpu!.device_count ?? 0) > 1
             ? `${gpu!.name} · Busiest of ${gpu!.device_count} GPUs`
             : gpu!.name}
       </p>

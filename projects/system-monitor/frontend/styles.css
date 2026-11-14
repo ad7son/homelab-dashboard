@@ -911,3 +911,6 @@
 
 /* 後端例外可能含長路徑與完整堆疊，允許橫向捲動而不撐開外殼。 */
 .health-diagnostic-error pre { overflow: auto; max-height: 24rem; white-space: pre; font-size: 0.75rem; }
+
+/* API 可連線但資料過期時，沿用警示色保留既有版型。 */
+.homelab-status-stale { color: var(--color-warning-text); }

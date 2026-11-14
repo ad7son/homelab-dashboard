@@ -38,10 +38,12 @@ export function ProjectHealthPage() {
           <ArrowLeft size={20} aria-hidden="true" />
         </Link>
         <h1>{projectId === projectManifest.id ? projectManifest.name : 'Project Health'}</h1>
-        <button type="button" className="health-diagnostic-button" onClick={health.refresh} disabled={health.loading} aria-label="刷新專案健康檢查" title="刷新專案健康檢查"><RefreshCw size={18} /></button>
+        <button type="button" className="health-diagnostic-button" onClick={health.refresh} disabled={health.loading || !health.available} aria-label="刷新專案健康檢查" title="刷新專案健康檢查"><RefreshCw size={18} /></button>
       </header>
       {projectId !== projectManifest.id ? (
         <p>找不到專案，此專案目前沒有可顯示的健康詳情。</p>
+      ) : !health.available ? (
+        <p role="status">專案健康監測尚未啟用，將於共用 log 系統完成後提供。</p>
       ) : (
         <>
           {health.error ? <p role="alert" className="health-diagnostic-error">{health.error}{health.data ? '；目前顯示上次成功取得的報告。' : ''}</p> : null}

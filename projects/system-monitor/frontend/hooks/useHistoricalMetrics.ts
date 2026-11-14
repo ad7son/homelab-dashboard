@@ -40,13 +40,15 @@ export function useHistoricalMetrics({
 
   const setRange = useCallback((nextRange: HistoricalRange) => {
     setRangeState(nextRange);
+    setData(null);
+    setError(null);
   }, []);
 
   const retry = useCallback(() => {
     setReloadToken((token) => token + 1);
   }, []);
 
-  // 歷史採集器與即時 API 獨立運作；開啟 History 時定時重新查詢新樣本。
+  // 即時與歷史資料皆由同一採集器寫入；開啟 History 時定時查詢新樣本。
   // 離開歷史模式或頁面後清除計時器，避免背景持續發送查詢。
   useEffect(() => {
     if (!enabled) return;
@@ -70,7 +72,6 @@ export function useHistoricalMetrics({
     void (async () => {
       setLoading(true);
       setError(null);
-      setData(null);
 
       try {
         const response = await getHistoricalMetrics(range, controller.signal);
@@ -90,7 +91,6 @@ export function useHistoricalMetrics({
         ) {
           return;
         }
-        setData(null);
         setError(
           err instanceof ApiError
             ? err.message

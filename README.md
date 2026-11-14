@@ -2,7 +2,7 @@
 
 A7LAS is one web application that hosts more than one project. A shared React shell and a shared FastAPI process discover projects from `projects/`. Each project keeps its own pages, API routes, and manifest.
 
-The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, GPU, disk I/O and network metrics, historical charts, and feature health diagnostics.
+The first project is System Monitor, the Home Lab dashboard. It reports live CPU, memory, GPU, disk I/O and network metrics, historical charts.
 
 ## System Architecture
 
@@ -75,30 +75,20 @@ A module is a directory under `projects/` with `project.json`, `frontend/index.t
 - Legacy base: `/homelab` redirects to `/system-monitor`, preserving child paths.
 - API prefix: `/api/system-monitor`
 - Legacy API prefix: `/api`, so older clients can keep calling `/api/overview` and the other monitoring paths
-- Live overview polls about every 3 seconds. Project Health overview refreshes every 30 seconds; the detail page uses a manually refreshed snapshot.
+- Live overview polls about every 3 seconds. Project Health 前端設計保留；後端檢測 API 已移除，待共用 log 系統完成後重新串接。目前健康區塊顯示尚未啟用，並暫停健康檢測請求。
 - Historical ranges are `15m`, `1h`, `24h`, and `7d`.
-- The collector samples every 30 seconds and keeps raw samples for 7 days.
-- GPU usage and disk read/write rates are available in both Live and History charts. SQLite schema v2 adds three nullable columns and upgrades v1 databases in place, preserving older samples as missing values for these metrics. Restart both the API and collector after updating; new history begins accumulating when the updated collector runs.
+- The collector samples every 3 seconds; retention is currently unlimited and can be set to a positive number of days.
+- The new backend stores basic information and dynamic metrics separately. No migration of development data is provided. The frontend maps the new API response to the existing dashboard and marks stale samples.
 
 ## System Monitor 後端結構
 
-後端原始碼位於 `projects/system-monitor/backend/src/`，採用分層單體：
+後端使用 `api/`、`collector/`、`database/` 三個資料夾。採集器每三秒
+寫入 SQLite 的 `host_info` 與 `host_metrics`；兩個 API 只查資料庫。
+基本資訊僅在採集器啟動時更新。目前 `RETENTION_DAYS = None`
+表示永久保留，可改成正整數天數；運行滿 24 小時後第一次清理，不在啟動時清理。
 
-```text
-src/
-├── plugin.py          平台整合入口
-├── bootstrap.py       建立並注入實際服務與基礎設施
-├── api/               HTTP 路由、Schema、依賴與錯誤轉換
-├── services/          總覽、歷史、健康檢查、採集用例與介面
-├── domain/            不可變資料、健康規則與降採樣純運算
-├── infrastructure/    硬體適配、資料庫、Repository、旁檔及程序鎖
-├── collector/         採集器 CLI 與背景執行迴圈
-└── core/              設定與日誌
-```
-
-專案自己的 `main.py` 已移除，API 統一由平台 `backend/app/main.py` 載入 `plugin.build_router()`。背景採集器仍使用 `python -m src.collector.metrics_collector`。SQLite schema v2、30 秒採集與七天保留政策維持不變，不需要重建既有資料庫。
-
-完整責任、SQL 分工、依賴方向、服務生命週期與測試說明見 [System Monitor 後端架構](docs/system-monitor-backend.md)。
+架構、資料流與維護邊界見
+[System Monitor 後端](projects/system-monitor/backend/README.md)。
 
 ## Installation
 
@@ -139,21 +129,24 @@ Interactive docs are at `http://localhost:8000/docs`. Restart Uvicorn after addi
 
 System Monitor API 由上方平台指令啟動；不再提供 `src.main:app`。
 
-macOS／Linux 的背景採集器指令（同樣從儲存庫根目錄執行）：
+後端啟動時會透過 System Monitor plugin 自動管理採集器，不需另開第三個
+終端機。關閉後端也會停止其管理的採集器；多 worker 只會有一個管理者。
+
+需要獨立診斷時，仍可從儲存庫根目錄執行採集器（macOS／Linux）：
 
 ```bash
-PYTHONPATH=projects/system-monitor/backend backend/.venv/bin/python -m src.collector.metrics_collector
+PYTHONPATH=projects/system-monitor/backend backend/.venv/bin/python -m src.collector
 ```
 
 
-The System Monitor collector is a separate process. From the repository root in PowerShell it can be started for a local database, but its file lock uses Linux `fcntl.flock` and will not take that lock on Windows:
+The collector remains a separate child process managed by the plugin. For standalone diagnosis in PowerShell:
 
 ```powershell
 $env:PYTHONPATH = "projects\system-monitor\backend"
-.\backend\.venv\Scripts\python.exe -m src.collector.metrics_collector
+.\backend\.venv\Scripts\python.exe -m src.collector
 ```
 
-The default database path is `backend/data/metrics.db`. `A7LAS_METRICS_DB_PATH` overrides it. Windows does not provide systemd or `flock`.
+The default database path is `backend/data/system-monitor.db`. `A7LAS_METRICS_DB_PATH` overrides it. Windows uses a byte-range file lock; systemd deployment remains Linux-only.
 
 ## Running Tests
 
@@ -165,7 +158,7 @@ From the repository root in PowerShell:
 
 The root `pytest.ini` collects `backend/tests` and tests under `projects/`. `conftest.py` exposes project test helpers; those helpers use the same isolated modules that the platform loads, avoiding duplicate sampling state.
 
-The collector lock test is skipped on Windows because it requires Linux `fcntl.flock`. That test is still part of the suite. Do not treat a skip as a pass.
+Collector tests use temporary databases and simulated clocks; GPU hardware still needs validation on the deployment host.
 
 From `frontend/`:
 
@@ -196,24 +189,10 @@ Do not edit `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/router/r
 | GET | `/api/health` | Platform. Body includes `status` and `version`. |
 | GET | `/api/system-monitor/overview` | System Monitor |
 | GET | `/api/system-monitor/history?range=15m` | System Monitor. `range` is `15m`, `1h`, `24h`, or `7d`. |
-| GET | `/api/system-monitor/feature-health` | System Monitor. 實際功能健康報告；`force=true` 略過報告快取。 |
 
-The same System Monitor paths are also mounted at `/api/overview`, `/api/history`, and `/api/feature-health`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
+The same System Monitor paths are also mounted at `/api/overview` and `/api/history`. Query parameters and response schemas match the namespaced routes. `GET /api/health` is not one of those project routes.
 
-`/overview` contains only `cpu`, `memory`, `network`, `gpu`, and `disk_io`. Host identity and disk-capacity collection have been removed. Individual metric endpoints are no longer exposed; live metric reads use `/overview`.
-
-### System Monitor 功能健康檢查
-
-`GET /api/system-monitor/feature-health` 回報 CPU、記憶體、GPU、Disk I/O、網路、歷史寫入與歷史查詢七項功能。這些是採集與查詢是否正常的檢查，CPU 使用率高不會直接判為採集故障。每項包含 `status`、中文說明與判定依據、檢查時間、最近成功時間、耗時、來源、完整 `raw_data` 與可取得的例外堆疊；單項失敗不會中止其他檢查。
-
-- `healthy`：取得有效資訊；零使用率或零流量仍正常。
-- `issues`：讀取失敗、資料無效，或歷史樣本超過 90 秒未更新。
-- `unavailable`：沒有可用來源或平台不支援，例如目前 macOS 上的 GPU。
-- `unknown`：尚未完成速率計算所需的首次取樣。
-
-報告快取三秒，`force=true` 可要求重新檢查（底層採集器仍保有自己的取樣間隔／快取）。總覽每 30 秒更新；詳情頁固定快照，按刷新時同步替換狀態與證據。畫面的完整 API 回應是這份健康報告，包含七項檢查，而非另一次 overview 查詢。請求失敗時明確提示並保留上次報告，不產生假數值。
-
-歷史寫入檢查唯讀查詢最新樣本，並讀取採集器的 `<metrics.db>.collector-status.json` 原子診斷紀錄。新增程式後需重啟採集器才能產生旁檔；檔案包含最近嘗試、成功樣本與原始錯誤。旁檔寫入失敗會記錄日誌，不中止採集。歷史查詢檢查與正式查詢使用同一服務，但使用唯讀模式，不建立或遷移資料庫；空清單屬查詢成功，樣本新鮮度由寫入檢查判斷。目前檢查一小時範圍，未涵蓋長時間降採樣。除歷史寫入外，最近成功時間僅保留於目前後端程序記憶體，重啟後重新累積。
+`/overview` returns `info` and `metrics`, including the real sample timestamp. `/history` supports the preset range or a custom `start_ms` / `end_ms` window. The frontend adapts this schema at the request boundary and uses the sample timestamp to detect stale data.
 
 ## Linux Deployment Notes
 
@@ -223,11 +202,11 @@ The collector unit in `deploy/systemd/a7las-metrics-collector.service` keeps the
 
 ```text
 WorkingDirectory=/srv/homelab-dashboard/projects/system-monitor/backend
-Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/metrics.db
-ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector.metrics_collector
+Environment=A7LAS_METRICS_DB_PATH=/srv/a7las/data/system-monitor.db
+ExecStart=/srv/homelab-dashboard/backend/.venv/bin/python -m src.collector
 ```
 
-The interpreter remains the shared virtual environment. The working directory puts `system_monitor` on Python's module path. The unit does not change the 30-second sample interval, the SQLite schema, the 7-day retention rule, or the `A7LAS_METRICS_DB_PATH` value. Those behaviors live in the collector code and the environment variable.
+The interpreter remains the shared virtual environment. The working directory puts `src` on Python's module path. The collector uses the three-second interval and configurable retention in `src/config.py`; the unit now points to the new development database filename.
 
 After copying the unit into systemd's unit directory, a Linux administrator can load it with:
 
@@ -249,6 +228,6 @@ Cursor AI Coding Agent implemented the module loader, the System Monitor move, a
 - Settings is a shell placeholder. It does not save preferences.
 - There is no authentication, alerting, or container monitoring.
 - CORS allows `GET` from `http://localhost:5173` only.
-- Windows cannot run this repository's systemd unit or `fcntl.flock`. The collector lock test is skipped there.
+- The systemd unit requires Linux. Windows collector locking uses the OS byte-range lock and still needs validation on Windows.
 - The collector unit in this repository was updated. A live Linux service was not reloaded from this workspace.
 - The repository root contains a file named `exit`. It is a saved diff dump from commit `d2ed581`. It is not part of the application.

@@ -25,7 +25,7 @@ export function HomeLabLoadState({
     <div className="homelab-load-state homelab-load-state-failed" role="alert">
       <h2 className="homelab-load-title">Unable to load Home Lab data</h2>
       <p className="homelab-load-body">
-        The monitoring backend could not be reached.
+        Monitoring data is not available yet.
       </p>
       {error ? <p className="homelab-load-detail">{error}</p> : null}
       {onRetry ? (

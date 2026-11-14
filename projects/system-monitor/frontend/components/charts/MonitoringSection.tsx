@@ -98,13 +98,14 @@ export function MonitoringSection({
         ) : null}
       </div>
 
+      {!isLive && error && data ? <p className="monitoring-panel-detail" role="alert">{error}；目前顯示上次取得的歷史資料。</p> : null}
       {isLive ? (
         <LiveMonitoringCharts samples={samples} metric={metric} />
-      ) : loading ? (
+      ) : loading && !data ? (
         <div className="monitoring-panel-state" role="status">
           Loading historical data…
         </div>
-      ) : error ? (
+      ) : error && !data ? (
         <div className="monitoring-panel-state monitoring-panel-state-error">
           <h3 className="monitoring-panel-title">Historical data unavailable</h3>
           <p className="monitoring-panel-body">
@@ -128,7 +129,7 @@ export function MonitoringSection({
           <button type="button" className="homelab-retry-button" onClick={retry}>Retry</button>
         </div>
       ) : data ? (
-        <HistoricalMonitoringCharts range={range} samples={data.samples} metric={metric} />
+        <HistoricalMonitoringCharts range={range} intervalSeconds={data.interval_seconds} samples={data.samples} metric={metric} />
       ) : null}
     </div>
   );
