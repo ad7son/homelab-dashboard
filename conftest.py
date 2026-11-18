@@ -24,4 +24,4 @@ def pytest_configure(config: object) -> None:
 @pytest.fixture(autouse=True)
 def isolated_event_storage(tmp_path, monkeypatch):
     """所有測試只寫暫存共用事件庫，避免測試污染開發者的健康報告。"""
-    monkeypatch.setenv("A7LAS_OBSERVABILITY_DB_PATH", str(tmp_path / "observability.db"))
+    monkeypatch.setenv("A7LAS_OBSERVABILITY_DB_PATH", str(tmp_path / "events.db"))

@@ -23,8 +23,8 @@ def event_database_path() -> pathlib.Path:
         else (
             pathlib.Path(__file__).resolve().parents[2]
             / "data"
-            / "platform"
-            / "observability.db"
+            / "logs"
+            / "events.db"
         )
     )
     return path.expanduser().resolve()
